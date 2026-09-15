@@ -7,7 +7,7 @@
  * 任何一边改了字段而另一边没跟上，测试会立刻红。
  */
 
-export const CURRENT_FORMAT_VERSION = 4;
+export const CURRENT_FORMAT_VERSION = 5;
 
 /** 开发模块的五个层级（自上而下：项目 → 里程碑 → 功能列表 → Bug 追踪 → 开发日志） */
 export const DEV_LEVELS = ['项目', '里程碑', '功能', 'Bug', '日志'];
@@ -39,7 +39,7 @@ export function blankData() {
     咨询: { 客户: [], 沟通: [], 待跟进: [], 交付物: [], 工时: [] },
     健身: { 计划模板: {}, 打卡: [] },
     饮食: { 食物库: [], 记录: {}, 计划: {}, 饮水: {}, 体重: [] },
-    游戏: { 在玩: [], 待玩: [], 时长: [] },
+    游戏: { 在玩: [], 待玩: [], 时长: [], 战绩: [], 开黑: [], 音乐目录: '', 快捷入口: [] },
     元: { 已处理顺延: [] },
   };
 }
@@ -118,8 +118,22 @@ export function 迁移数据(data) {
   迁移开发数据(data.开发);
   迁移自媒体数据(data.自媒体);
   迁移健身数据(data.健身);
+  迁移游戏数据(data.游戏);
   迁移饮食数据(data.饮食);
   return data;
+}
+
+/**
+ * 游戏模块新增四块：王者战绩、开黑提醒、音乐文件夹、快捷入口。
+ * 老数据缺这些字段，读盘时补上，不补的话界面读 undefined 会白屏。
+ */
+export function 迁移游戏数据(游戏) {
+  if (!游戏 || typeof 游戏 !== 'object') return 游戏;
+  if (!Array.isArray(游戏.战绩)) 游戏.战绩 = [];
+  if (!Array.isArray(游戏.开黑)) 游戏.开黑 = [];
+  if (!Array.isArray(游戏.快捷入口)) 游戏.快捷入口 = [];
+  if (typeof 游戏.音乐目录 !== 'string') 游戏.音乐目录 = '';
+  return 游戏;
 }
 
 /**

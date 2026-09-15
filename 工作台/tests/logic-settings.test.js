@@ -124,7 +124,11 @@ describe('设置逻辑（logic/settings.js）', () => {
       3 + 1 + 1 + 1 + 2,
       '食物库 3 + 记录 1 天 + 计划 1 天 + 饮水 1 天 + 体重 2'
     );
-    assert.equal(S.clearSectionImpact(d, '游戏'), 2 + 2 + 3);
+    assert.equal(
+      S.clearSectionImpact(d, '游戏'),
+      2 + 2 + 3 + 2 + 1,
+      '在玩 2 + 待玩 2 + 时长 3 + 战绩 2 + 开黑 1'
+    );
   });
 
   test('清空饮食：食物库、记录、饮水、体重一起清掉', () => {

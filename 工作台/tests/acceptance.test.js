@@ -71,12 +71,29 @@ describe('验收 §10.1 持久化与本地化', () => {
     assert.deepEqual(问题, [], '数据必须落在本机文件里，不能用浏览器存储');
   });
 
-  test('不联网：前端不引用任何外部地址，也不引 CDN 资源', () => {
+  test('不联网：不加载外部资源、不发外部请求', () => {
+    // 允许出现的唯一外部地址是游戏模块的快捷入口 —— 它只是页面上的 <a href>，
+    // 点开是你自己手动打开浏览器，程序自身不会去请求它。除了这一个，别处不许有外部 URL。
+    const 允许的链接 = new Set(['https://www.bilibili.com']);
+    const 禁用 = [
+      { 说明: 'fetch 外部地址', re: /fetch\(\s*['"`]https?:\/\// },
+      { 说明: '外链脚本', re: /<script[^>]+src=["']https?:\/\// },
+      { 说明: '外链样式', re: /<link[^>]+href=["']https?:\/\// },
+      { 说明: 'CSS @import 外链', re: /@import[^;]*https?:\/\// },
+      { 说明: 'CSS url() 外链', re: /url\(\s*['"]?https?:\/\// },
+      { 说明: 'CDN 引用', re: /\/\/cdn\.|\/\/unpkg\.|\/\/fonts\.googleapis\./ },
+    ];
+
     const 问题 = [];
     for (const { file, 文本 } of readAll(PUBLIC_DIR)) {
+      const 相对 = path.relative(ROOT, file);
+      for (const { 说明, re } of 禁用) {
+        if (re.test(文本)) 问题.push(相对 + ' → ' + 说明);
+      }
       for (const m of 文本.matchAll(/https?:\/\/[^\s'"`)]+/g)) {
         if (/127\.0\.0\.1|localhost/.test(m[0])) continue;
-        问题.push(path.relative(ROOT, file) + ' → ' + m[0]);
+        if (允许的链接.has(m[0])) continue;
+        问题.push(相对 + ' → 未获准的外部地址 ' + m[0]);
       }
     }
     assert.deepEqual(问题, []);

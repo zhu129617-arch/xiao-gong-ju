@@ -696,6 +696,15 @@
   color: var(--text-3);
 }
 
+/* ---------- 音乐微播放器 ---------- */
+
+.music-player {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  height: 34px;
+}
+
 /* ---------- 手绘 SVG 图表（见 logic/chart.js）---------- */
 
 .chart {

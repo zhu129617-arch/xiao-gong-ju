@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 import * as store from './datafile.js';
+import { listAudio, resolveAudio } from './music.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const PUBLIC_DIR = path.resolve(__dirname, '..', 'public');
@@ -21,6 +22,21 @@ const MIME = {
   '.woff2': 'font/woff2',
   '.txt': 'text/plain; charset=utf-8',
 };
+
+const 音频MIME = {
+  '.mp3': 'audio/mpeg',
+  '.m4a': 'audio/mp4',
+  '.aac': 'audio/aac',
+  '.wav': 'audio/wav',
+  '.flac': 'audio/flac',
+  '.ogg': 'audio/ogg',
+  '.opus': 'audio/ogg',
+  '.aiff': 'audio/aiff',
+};
+
+function 音频类型(文件) {
+  return 音频MIME[path.extname(文件).toLowerCase()] || 'application/octet-stream';
+}
 
 const MAX_BODY = 20 * 1024 * 1024;
 
@@ -148,6 +164,48 @@ export function createApp({ dataDir, openFolder, logger = () => {} } = {}) {
         sendJson(res, 200, { ok: true, savedAt: r.at });
       } catch (e) {
         sendJson(res, 500, { ok: false, error: '写入失败：' + e.message });
+      }
+      return;
+    }
+
+    // 本机音乐文件夹：列出能播的文件。
+    // 目录只从数据文件里读，客户端不能传路径进来 —— 这是有意为之的收口。
+    if (urlPath === '/api/music' && req.method === 'GET') {
+      let 配置 = '';
+      try {
+        配置 = (store.loadOrCreate(dir).data.游戏 || {}).音乐目录 || '';
+      } catch (e) {
+        sendJson(res, 500, { ok: false, error: '读不到数据文件：' + e.message, 文件: [] });
+        return;
+      }
+      sendJson(res, 200, listAudio(配置));
+      return;
+    }
+
+    // 播放某一个音频文件。客户端只能给"文件名"，路径能不能走出目录由 server/music.js 把关。
+    if (urlPath === '/api/music/file' && req.method === 'GET') {
+      const u = new URL(req.url, 'http://127.0.0.1');
+      let 配置 = '';
+      try {
+        配置 = (store.loadOrCreate(dir).data.游戏 || {}).音乐目录 || '';
+      } catch {
+        配置 = '';
+      }
+      const r = resolveAudio(配置, u.searchParams.get('name') || '');
+      if (!r.ok) {
+        sendJson(res, 404, { ok: false, error: r.error });
+        return;
+      }
+      try {
+        const buf = fs.readFileSync(r.路径);
+        res.writeHead(200, {
+          'Content-Type': 音频类型(r.路径),
+          'Content-Length': buf.length,
+          'Cache-Control': 'no-store',
+        });
+        res.end(buf);
+      } catch (e) {
+        sendJson(res, 500, { ok: false, error: '读文件失败：' + e.message });
       }
       return;
     }

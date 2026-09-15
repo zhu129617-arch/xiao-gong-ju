@@ -71,18 +71,30 @@ describe('前端模块的导入图（静态检查）', () => {
     }
   });
 
-  test('前端代码里没有引用任何外部网络地址（PRD §9：不联网）', () => {
-    const allowed = [/127\.0\.0\.1/, /localhost/];
+  test('前端不加载外部资源、不发外部请求（只有一个获准的链接地址）', () => {
+    // 游戏模块的快捷入口里有一个 B 站地址，它只是 <a href>，点开是你自己手动打开浏览器。
+    const 允许的链接 = new Set(['https://www.bilibili.com']);
+    const 禁用 = [
+      { 说明: 'fetch 外部地址', re: /fetch\(\s*['"`]https?:\/\// },
+      { 说明: '外链脚本', re: /<script[^>]+src=["']https?:\/\// },
+      { 说明: '外链样式', re: /<link[^>]+href=["']https?:\/\// },
+      { 说明: 'CSS @import 外链', re: /@import[^;]*https?:\/\// },
+      { 说明: 'CSS url() 外链', re: /url\(\s*['"]?https?:\/\// },
+      { 说明: 'CDN 引用', re: /\/\/cdn\.|\/\/unpkg\.|\/\/fonts\.googleapis\./ },
+    ];
+
     const problems = [];
     for (const file of walk(PUBLIC_DIR)) {
       if (!/\.(js|css|html|svg)$/.test(file)) continue;
       const src = fs.readFileSync(file, 'utf8');
-      for (const m of src.matchAll(/https?:\/\/[^\s'"`)]+/g)) {
-        if (allowed.some((re) => re.test(m[0]))) continue;
-        problems.push(`${path.relative(ROOT, file)} → ${m[0]}`);
+      const 相对 = path.relative(ROOT, file);
+      for (const { 说明, re } of 禁用) {
+        if (re.test(src)) problems.push(`${相对} → ${说明}`);
       }
-      if (/\/\/cdn\.|\/\/unpkg\.|\/\/fonts\.googleapis\./.test(src)) {
-        problems.push(`${path.relative(ROOT, file)} → CDN 引用`);
+      for (const m of src.matchAll(/https?:\/\/[^\s'"`)]+/g)) {
+        if (/127\.0\.0\.1|localhost/.test(m[0])) continue;
+        if (允许的链接.has(m[0])) continue;
+        problems.push(`${相对} → 未获准的外部地址 ${m[0]}`);
       }
     }
     assert.deepEqual(problems, [], '出现了对外请求引用');
