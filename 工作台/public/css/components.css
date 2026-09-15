@@ -573,6 +573,19 @@
   margin-bottom: 4px;
 }
 
+/* 卡片左上角：完成勾选 + 标题排成一行 */
+.kanban-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin-bottom: 4px;
+}
+
+.kanban-card-head .kanban-card-title {
+  margin-bottom: 0;
+  word-break: break-word;
+}
+
 /* ---------- 日历 ---------- */
 
 .calendar {

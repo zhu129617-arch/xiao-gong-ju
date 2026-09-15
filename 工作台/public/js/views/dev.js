@@ -25,12 +25,20 @@ import {
   featuresByState,
   nextFeatureState,
   addBug,
+  findBug,
   moveBug,
   removeBug,
+  bugsOf,
   bugsByState,
   sortedBugs,
   logsOf,
   removeLog,
+  completeFeature,
+  uncompleteFeature,
+  completeBug,
+  uncompleteBug,
+  archivedFeatures,
+  archivedBugs,
   addNote,
   notesOf,
   removeNote,
@@ -51,6 +59,8 @@ const ui_state = {
   新功能里程碑: null,
   新Bug里程碑: null,
   新Bug严重程度: '一般',
+  // 归档区默认收起来，免得看板越用越长
+  展开归档: false,
 };
 
 export function resetViewState() {
@@ -60,6 +70,7 @@ export function resetViewState() {
   ui_state.新功能里程碑 = null;
   ui_state.新Bug里程碑 = null;
   ui_state.新Bug严重程度 = '一般';
+  ui_state.展开归档 = false;
 }
 
 function 提示线() {
@@ -205,6 +216,69 @@ function 里程碑区(ctx, project) {
   </div>`;
 }
 
+/** 一张功能卡；左上角那个小方框就是「完成」勾选 */
+function 功能卡(f, 里程碑名) {
+  const 已完成 = f.状态 === '已完成';
+  return `
+    <div class="kanban-card" draggable="true" data-feature-card="${ui.escapeHtml(f.id)}">
+      <div class="kanban-card-head">
+        ${ui.checkbox(已完成, 'dev:勾选功能', f.id)}
+        <span class="kanban-card-title${已完成 ? ' is-done' : ''}">${ui.escapeHtml(f.标题)}</span>
+      </div>
+      <div class="hint">
+        ${f.所属里程碑 ? `▸ ${ui.escapeHtml(里程碑名.get(f.所属里程碑) || '')} · ` : ''}优先级 ${ui.escapeHtml(f.优先级 || '无')}
+      </div>
+      <div class="hint">
+        ${f.完成日期 ? `完成于 ${ui.escapeHtml(formatShortDate(f.完成日期))}` : `建于 ${ui.escapeHtml(formatShortDate(f.创建日期))}`}
+      </div>
+      <div class="kanban-card-foot">
+        ${
+          nextFeatureState(f.状态)
+            ? `<button type="button" class="btn btn-sm" data-action="dev:功能推进" data-id="${ui.escapeHtml(
+                f.id
+              )}">→ ${nextFeatureState(f.状态)}</button>`
+            : `<button type="button" class="btn btn-sm" data-action="dev:功能退回" data-id="${ui.escapeHtml(
+                f.id
+              )}">← 退回</button>`
+        }
+        <select class="field-input" data-action="dev:功能优先级" data-id="${ui.escapeHtml(f.id)}">
+          ${['高', '中', '低', '无']
+            .map((p) => `<option value="${p}"${f.优先级 === p ? ' selected' : ''}>${p}</option>`)
+            .join('')}
+        </select>
+        <button type="button" class="btn btn-sm" data-action="dev:功能入计划" data-id="${ui.escapeHtml(
+          f.id
+        )}">加进今日计划</button>
+        ${ui.deleteButton({ action: 'dev:删功能', id: f.id, label: '删' })}
+      </div>
+    </div>`;
+}
+
+function 功能列(project, 状态, list, 里程碑名) {
+  const 是归档列 = 状态 === '已完成';
+  const 收起 = 是归档列 && !ui_state.展开归档;
+  const 列头 = `<div class="kanban-col-title"><span>${状态}</span><span>${list.length}</span></div>`;
+  const 列体 = 收起
+    ? list.length === 0
+      ? '<p class="hint">还没有完成的</p>'
+      : `<p class="hint">${list.length} 项已归档</p>
+         <button type="button" class="btn btn-sm" data-action="dev:切换归档">展开归档</button>`
+    : `${
+        list.length === 0 ? '<p class="hint">拖过来</p>' : list.map((f) => 功能卡(f, 里程碑名)).join('')
+      }
+       ${
+         是归档列 && list.length > 0
+           ? '<button type="button" class="btn btn-sm" data-action="dev:切换归档">收起归档</button>'
+           : ''
+       }`;
+
+  return `
+      <div class="kanban-col" data-feature-state="${状态}" data-project="${ui.escapeHtml(project.id)}">
+        ${列头}
+        ${列体}
+      </div>`;
+}
+
 /** 第三层：功能列表（看板） */
 function 功能看板(ctx, project) {
   const byState = featuresByState(ctx.data, project.id);
@@ -238,54 +312,10 @@ function 功能看板(ctx, project) {
         }
       </div>
       <div class="kanban">
-        ${FEATURE_STATES.map(
-          (状态) => `
-          <div class="kanban-col" data-feature-state="${状态}" data-project="${ui.escapeHtml(project.id)}">
-            <div class="kanban-col-title"><span>${状态}</span><span>${byState[状态].length}</span></div>
-            ${
-              byState[状态].length === 0
-                ? '<p class="hint">拖过来</p>'
-                : byState[状态]
-                    .map(
-                      (f) => `
-              <div class="kanban-card" draggable="true" data-feature-card="${ui.escapeHtml(f.id)}">
-                <div class="kanban-card-title${f.状态 === '已完成' ? ' is-done' : ''}">${ui.escapeHtml(f.标题)}</div>
-                <div class="hint">
-                  ${f.所属里程碑 ? `▸ ${ui.escapeHtml(里程碑名.get(f.所属里程碑) || '')} · ` : ''}优先级 ${ui.escapeHtml(
-                        f.优先级 || '无'
-                      )}
-                </div>
-                <div class="hint">
-                  ${f.完成日期 ? `完成于 ${ui.escapeHtml(formatShortDate(f.完成日期))}` : `建于 ${ui.escapeHtml(formatShortDate(f.创建日期))}`}
-                </div>
-                <div class="kanban-card-foot">
-                  ${
-                    nextFeatureState(f.状态)
-                      ? `<button type="button" class="btn btn-sm" data-action="dev:功能推进" data-id="${ui.escapeHtml(
-                          f.id
-                        )}">→ ${nextFeatureState(f.状态)}</button>`
-                      : `<button type="button" class="btn btn-sm" data-action="dev:功能退回" data-id="${ui.escapeHtml(
-                          f.id
-                        )}">← 退回</button>`
-                  }
-                  <select class="field-input" data-action="dev:功能优先级" data-id="${ui.escapeHtml(f.id)}">
-                    ${['高', '中', '低', '无']
-                      .map((p) => `<option value="${p}"${f.优先级 === p ? ' selected' : ''}>${p}</option>`)
-                      .join('')}
-                  </select>
-                  <button type="button" class="btn btn-sm" data-action="dev:功能入计划" data-id="${ui.escapeHtml(
-                    f.id
-                  )}">加进今日计划</button>
-                  ${ui.deleteButton({ action: 'dev:删功能', id: f.id, label: '删' })}
-                </div>
-              </div>`
-                    )
-                    .join('')
-            }
-          </div>`
-        ).join('')}
+        ${FEATURE_STATES.map((状态) => 功能列(project, 状态, byState[状态], 里程碑名)).join('')}
       </div>
       <p class="hint" style="margin-top:10px">功能卡可以拖到别的列；拖不动的话，每张卡上都有「→ 下一阶段」按钮。</p>
+      <p class="hint">勾上卡片左上角的小方框就算完成：状态自动变「已完成」、收进归档，并自动在下面的开发日志里落一条。取消勾选会把那条自动日志一并撤掉。</p>
     </div>
   </div>`;
 }
@@ -293,7 +323,9 @@ function 功能看板(ctx, project) {
 /** 第四层：Bug 追踪 */
 function Bug追踪(ctx, project) {
   const byState = bugsByState(ctx.data, project.id);
-  const list = sortedBugs(ctx.data.开发.Bug.filter((b) => b.所属项目 === project.id));
+  const 全部 = sortedBugs(bugsOf(ctx.data, project.id));
+  const 归档数 = 全部.filter((b) => b.归档).length;
+  const list = ui_state.展开归档 ? 全部 : 全部.filter((b) => !b.归档);
   const 里程碑名 = new Map(milestonesOf(ctx.data, project.id).map((m) => [m.id, m.名称]));
   const 里程碑选项 = milestonesOf(ctx.data, project.id);
 
@@ -331,13 +363,16 @@ function Bug追踪(ctx, project) {
       <div class="list" style="margin-top:10px">
         ${
           list.length === 0
-            ? '<p class="hint">还没有 Bug。修不动的先记下来，别靠脑子记。</p>'
+            ? `<p class="hint">${
+                归档数 > 0 ? '没有待处理的 Bug 了。' : '还没有 Bug。修不动的先记下来，别靠脑子记。'
+              }</p>`
             : list
                 .map(
                   (b) => `
         <div class="list-row">
+          ${ui.checkbox(b.归档, 'dev:勾选Bug', b.id)}
           <span class="tag tag-amber">${ui.escapeHtml(b.严重程度)}</span>
-          <span class="grow" style="word-break:break-word">${ui.escapeHtml(b.标题)}</span>
+          <span class="grow${b.归档 ? ' is-done' : ''}" style="word-break:break-word">${ui.escapeHtml(b.标题)}</span>
           ${b.所属里程碑 ? `<span class="hint">${ui.escapeHtml(里程碑名.get(b.所属里程碑) || '')}</span>` : ''}
           <span class="hint">${ui.escapeHtml(b.状态)}</span>
           <select class="field-input" data-action="dev:Bug状态" data-id="${ui.escapeHtml(b.id)}">
@@ -352,6 +387,14 @@ function Bug追踪(ctx, project) {
                 .join('')
         }
       </div>
+      ${
+        归档数 > 0
+          ? `<button type="button" class="btn btn-sm" data-action="dev:切换归档" style="margin-top:8px">${
+              ui_state.展开归档 ? '收起' : '展开'
+            }归档（${归档数} 个）</button>`
+          : ''
+      }
+      <p class="hint" style="margin-top:8px">勾上小方框就算修好了：状态变「已修复」、收进归档，并自动落一条开发日志。取消勾选会把那条自动日志一并撤掉。</p>
     </div>
   </div>`;
 }
@@ -643,6 +686,44 @@ export default {
     },
     'dev:删Bug': (el, ctx, id) => {
       ctx.store.update((d) => removeBug(d, id));
+    },
+    'dev:切换归档': (el, ctx) => {
+      ui_state.展开归档 = !ui_state.展开归档;
+      ctx.rerender();
+    },
+
+    // ---- 完成勾选：状态 ↔ 归档 ↔ 开发日志 三者联动 ----
+    'dev:勾选功能': (el, ctx, id) => {
+      let 提示 = '';
+      ctx.store.update((d) => {
+        const f = findFeature(d, id);
+        if (!f) return;
+        if (f.状态 === '已完成') {
+          const r = uncompleteFeature(d, id, ctx.today);
+          提示 = `已取消「${f.标题}」的完成状态，自动生成的那条日志也一并撤掉了（撤了 ${r.撤销日志} 条）`;
+        } else {
+          completeFeature(d, id, ctx.today);
+          提示 = `完成「${f.标题}」：已归档，并在开发日志里记了一条`;
+        }
+      });
+      ui_state.提示 = 提示;
+      ctx.rerender();
+    },
+    'dev:勾选Bug': (el, ctx, id) => {
+      let 提示 = '';
+      ctx.store.update((d) => {
+        const b = findBug(d, id);
+        if (!b) return;
+        if (b.状态 === '已修复' || b.状态 === '不修') {
+          const r = uncompleteBug(d, id, ctx.today);
+          提示 = `已取消「${b.标题}」的收尾状态，自动生成的那条日志也一并撤掉了（撤了 ${r.撤销日志} 条）`;
+        } else {
+          completeBug(d, id, ctx.today);
+          提示 = `Bug「${b.标题}」标记为已修复：已归档，并在开发日志里记了一条`;
+        }
+      });
+      ui_state.提示 = 提示;
+      ctx.rerender();
     },
 
     // ---- 日志 / 笔记 ----

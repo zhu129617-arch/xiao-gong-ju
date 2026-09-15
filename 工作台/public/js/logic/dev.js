@@ -342,6 +342,117 @@ export function removeLog(data, id) {
   return data.开发.日志.length < before;
 }
 
+/** 日志的来源：自动 = 勾选完成时系统生成的；手工 = 其他途径写进去的 */
+export const LOG_SOURCE_AUTO = '自动';
+
+function 追加日志(data, entry) {
+  if (!Array.isArray(data.开发.日志)) data.开发.日志 = [];
+  const 条 = {
+    id: newId('lg'),
+    所属项目: entry.所属项目,
+    类别: entry.类别,
+    关联id: entry.关联id,
+    标题: entry.标题,
+    动作: entry.动作,
+    说明: entry.说明,
+    时间: entry.时间 || new Date().toISOString(),
+    来源: entry.来源 || LOG_SOURCE_AUTO,
+  };
+  data.开发.日志.push(条);
+  return 条;
+}
+
+/** 某个工作项当前有没有「由勾选自动生成」的日志 */
+export function autoLogOf(data, 类别, 关联id) {
+  return (
+    数组(data.开发.日志).find((g) => g.类别 === 类别 && g.关联id === 关联id && g.来源 === LOG_SOURCE_AUTO) ||
+    null
+  );
+}
+
+// ---------- 完成勾选：状态 ↔ 归档 ↔ 开发日志 的联动 ----------
+//
+// 勾上：状态变完成态、记完成日期、打上归档标记，并自动落一条开发日志。
+// 取消：状态退回「待办」、清掉完成日期与归档，并**撤掉那条自动生成的日志**。
+//   —— 为什么是删掉而不是留一条「已撤销」：
+//   开发日志是当"发生过什么"看的，误勾一次就留一条假记录会把日志污染掉。
+//   手工写进去的日志（来源 = 手工）和这条链路无关，不会被删。
+
+export function completeFeature(data, id, today = todayKey(), now = new Date()) {
+  const f = findFeature(data, id);
+  if (!f) return { ok: false, error: '找不到这条功能' };
+  if (f.状态 === '已完成') {
+    // 已经完成：幂等，不再生成第二条日志
+    return { ok: true, 已经完成: true, feature: f, log: autoLogOf(data, '功能', id) };
+  }
+  const 日志 = 追加日志(data, {
+    所属项目: f.所属项目,
+    类别: '功能',
+    关联id: f.id,
+    标题: f.标题,
+    动作: '完成',
+    说明: `完成功能「${f.标题}」`,
+    时间: now.toISOString(),
+  });
+  moveFeature(data, id, '已完成', today);
+  return { ok: true, 已经完成: false, feature: f, log: 日志 };
+}
+
+export function uncompleteFeature(data, id, today = todayKey()) {
+  const f = findFeature(data, id);
+  if (!f) return { ok: false, error: '找不到这条功能' };
+  moveFeature(data, id, '待办', today);
+  const 撤掉 = 撤销自动日志(data, '功能', id);
+  return { ok: true, feature: f, 撤销日志: 撤掉 };
+}
+
+export function completeBug(data, id, today = todayKey(), now = new Date()) {
+  const b = findBug(data, id);
+  if (!b) return { ok: false, error: '找不到这条 Bug' };
+  if (BUG_CLOSED_STATES.includes(b.状态)) {
+    return { ok: true, 已经完成: true, bug: b, log: autoLogOf(data, 'Bug', id) };
+  }
+  const 日志 = 追加日志(data, {
+    所属项目: b.所属项目,
+    类别: 'Bug',
+    关联id: b.id,
+    标题: b.标题,
+    动作: '完成',
+    说明: `修复 Bug「${b.标题}」`,
+    时间: now.toISOString(),
+  });
+  moveBug(data, id, '已修复', today);
+  return { ok: true, 已经完成: false, bug: b, log: 日志 };
+}
+
+export function uncompleteBug(data, id, today = todayKey()) {
+  const b = findBug(data, id);
+  if (!b) return { ok: false, error: '找不到这条 Bug' };
+  moveBug(data, id, '待修', today);
+  const 撤掉 = 撤销自动日志(data, 'Bug', id);
+  return { ok: true, bug: b, 撤销日志: 撤掉 };
+}
+
+/** 撤掉某个工作项下所有「自动生成」的日志，返回撤掉的条数 */
+export function 撤销自动日志(data, 类别, 关联id) {
+  const list = 数组(data.开发.日志);
+  const 保留 = list.filter(
+    (g) => !(g.类别 === 类别 && g.关联id === 关联id && g.来源 === LOG_SOURCE_AUTO)
+  );
+  const 撤掉 = list.length - 保留.length;
+  data.开发.日志 = 保留;
+  return 撤掉;
+}
+
+/** 归档区：已完成/已收尾的工作项，看板上默认收起来 */
+export function archivedFeatures(data, projectId) {
+  return featuresOf(data, projectId).filter((f) => f.归档);
+}
+
+export function archivedBugs(data, projectId) {
+  return bugsOf(data, projectId).filter((b) => b.归档);
+}
+
 // ---------- 片段笔记 ----------
 
 export function addNote(data, projectId, 正文) {
