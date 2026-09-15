@@ -1,0 +1,11 @@
+{
+  "name": "worktable",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "个人工作生活工作台 —— 本机运行、零依赖、数据存本机文件",
+  "scripts": {
+    "start": "node server/server.js",
+    "test": "node --test 'tests/**/*.test.js'"
+  }
+}
