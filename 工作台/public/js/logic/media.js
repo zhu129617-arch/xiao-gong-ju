@@ -39,6 +39,23 @@ export const 阶段动作 = {
 export const MATERIAL_TYPES = ['视频', '音频', '图片', '字幕'];
 export const MATERIAL_STATES = ['待处理', '处理中', '已完成'];
 
+/** 数据复盘的四个关键指标（PRD §5.3） */
+export const METRICS = [
+  { key: '播放数', 名称: '播放量', 单位: '' },
+  { key: '点赞数', 名称: '点赞数', 单位: '' },
+  { key: '完播率', 名称: '完播率', 单位: '%' },
+  { key: '互动率', 名称: '互动率', 单位: '%' },
+];
+
+/** 百分比指标（0–100）与计数指标（≥0 的整数）分开处理 */
+const 百分比指标 = ['完播率', '互动率'];
+const 计数指标 = ['播放数', '点赞数'];
+
+function 取数(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
 export function platformOptions(data) {
   const list = data.设置.平台选项;
   return Array.isArray(list) && list.length ? list : ['YouTube', 'B站', '抖音', '小红书', '其他'];
@@ -150,6 +167,8 @@ export function publishIdea(data, ideaId, info = {}, today = todayKey()) {
       链接: String(info.链接 || ''),
       播放数: 0,
       点赞数: 0,
+      完播率: 0,
+      互动率: 0,
       关联选题: ideaId,
     };
     data.自媒体.内容.push(content);
@@ -203,6 +222,8 @@ export function addContent(data, 标题, extra = {}, today = todayKey()) {
     链接: extra.链接 || '',
     播放数: Number(extra.播放数) || 0,
     点赞数: Number(extra.点赞数) || 0,
+    完播率: 取数(extra.完播率),
+    互动率: 取数(extra.互动率),
     关联选题: extra.关联选题 || null,
   };
   data.自媒体.内容.push(content);
@@ -213,17 +234,24 @@ export function findContent(data, id) {
   return data.自媒体.内容.find((c) => c.id === id) || null;
 }
 
-/** 回填播放/点赞，也允许改平台、日期、链接 */
+/** 回填播放/点赞/完播率/互动率，也允许改平台、日期、链接 */
 export function updateContent(data, id, patch = {}) {
   const c = findContent(data, id);
   if (!c) return null;
   for (const key of ['标题', '平台', '发布日期', '链接']) {
     if (key in patch) c[key] = String(patch[key] ?? '');
   }
-  for (const key of ['播放数', '点赞数']) {
+  for (const key of 计数指标) {
     if (key in patch) {
       const n = Number(patch[key]);
       c[key] = Number.isFinite(n) && n >= 0 ? Math.round(n) : 0;
+    }
+  }
+  for (const key of 百分比指标) {
+    if (key in patch) {
+      const n = Number(patch[key]);
+      // 百分比指标夹在 0–100，填超了也不能让它把图撑爆
+      c[key] = Number.isFinite(n) ? Math.min(100, Math.max(0, Math.round(n * 10) / 10)) : 0;
     }
   }
   return c;
@@ -252,6 +280,74 @@ export function publishDots(data) {
 export function contentsThisWeek(data, today = todayKey()) {
   const { start, end } = weekRange(today);
   return data.自媒体.内容.filter((c) => c.发布日期 && inRange(c.发布日期, start, end));
+}
+
+// ---------- 数据复盘 ----------
+
+/** 复盘筛选里能选的平台（含「全部」） */
+export function 平台列表(data) {
+  const 用过的 = [...new Set((data.自媒体.内容 || []).map((c) => c.平台).filter(Boolean))];
+  return 用过的.sort();
+}
+
+/**
+ * 按发布日期取一串内容，做成趋势用的数据点。
+ * 平台为空 = 不筛平台；条数为 0 = 不限条数（取最后 N 条从旧到新排）。
+ */
+export function metricSeries(data, { 平台 = '', 条数 = 12 } = {}) {
+  let list = [...(data.自媒体.内容 || [])];
+  if (平台) list = list.filter((c) => c.平台 === 平台);
+  list = list.filter((c) => c.发布日期);
+  list.sort((a, b) => String(a.发布日期).localeCompare(String(b.发布日期)));
+  if (条数 > 0) list = list.slice(-条数);
+
+  return list.map((c) => ({
+    id: c.id,
+    标题: c.标题,
+    平台: c.平台,
+    发布日期: c.发布日期,
+    播放数: 取数(c.播放数),
+    点赞数: 取数(c.点赞数),
+    完播率: 取数(c.完播率),
+    互动率: 取数(c.互动率),
+  }));
+}
+
+/** 一批数据点的汇总：计数指标求和，百分比指标取平均 */
+export function metricSummary(点) {
+  const 条数 = Array.isArray(点) ? 点.length : 0;
+  const out = { 条数, 播放数: 0, 点赞数: 0, 完播率: 0, 互动率: 0, 最新: null };
+  if (条数 === 0) return out;
+
+  let 完播合计 = 0;
+  let 互动合计 = 0;
+  for (const p of 点) {
+    out.播放数 += p.播放数;
+    out.点赞数 += p.点赞数;
+    完播合计 += p.完播率;
+    互动合计 += p.互动率;
+  }
+  out.完播率 = Math.round((完播合计 / 条数) * 10) / 10;
+  out.互动率 = Math.round((互动合计 / 条数) * 10) / 10;
+  out.最新 = 点[点.length - 1];
+  return out;
+}
+
+/** 把一个指标做成图能吃的点：label 用发布日期去掉年份，看起来短一些 */
+export function 指标点(点, 指标) {
+  return 点.map((p) => ({
+    label: String(p.发布日期).slice(5),
+    value: 取数(p[指标]),
+  }));
+}
+
+/** 内容按发布日期倒序，复盘明细表用 */
+export function 复盘明细(data, { 平台 = '', 条数 = 12 } = {}) {
+  const 点 = metricSeries(data, { 平台, 条数 });
+  const 按日期 = new Map(点.map((p) => [p.id, p]));
+  return [...(data.自媒体.内容 || [])]
+    .filter((c) => 按日期.has(c.id))
+    .sort((a, b) => String(b.发布日期).localeCompare(String(a.发布日期)));
 }
 
 // ---------- 素材与待办 ----------

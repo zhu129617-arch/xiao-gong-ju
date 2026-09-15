@@ -29,9 +29,16 @@ import {
   updateMaterial,
   removeMaterial,
   ideaToToday,
+  METRICS,
+  metricSeries,
+  metricSummary,
+  指标点,
+  复盘明细,
+  平台列表,
 } from '../logic/media.js';
+import { 画图 } from '../logic/chart.js';
 
-const TABS = ['选题池', '内容日历', '素材与待办', '数据回看'];
+const TABS = ['选题池', '内容日历', '素材与待办', '数据复盘', '数据回看'];
 
 const ui_state = {
   标签: '选题池',
@@ -39,6 +46,10 @@ const ui_state = {
   选中日期: null,
   新素材类型: '视频',
   新素材状态: '待处理',
+  // 数据复盘面板的筛选（只是界面状态，不写进数据文件）
+  复盘平台: '',
+  复盘条数: 12,
+  图表类型: '折线',
   提示: null,
   错误: null,
 };
@@ -49,6 +60,9 @@ export function resetViewState() {
   ui_state.选中日期 = null;
   ui_state.新素材类型 = '视频';
   ui_state.新素材状态 = '待处理';
+  ui_state.复盘平台 = '';
+  ui_state.复盘条数 = 12;
+  ui_state.图表类型 = '折线';
   ui_state.提示 = null;
   ui_state.错误 = null;
 }
@@ -341,6 +355,111 @@ function 素材(ctx) {
   }`;
 }
 
+/** 一个指标的小图盒子：名字 + 最新值 + 趋势图 + 汇总 */
+function 指标盒(指标, 点, 汇总) {
+  const 序列 = 指标点(点, 指标.key);
+  const 最新 = 序列.length ? 序列[序列.length - 1].value : 0;
+  const 图 = 画图(ui_state.图表类型, 序列, { 单位: 指标.单位, 标题: `${指标.名称}趋势` });
+  const 脚注 =
+    指标.单位 === '%'
+      ? `平均 ${汇总[指标.key]}% · 共 ${汇总.条数} 条`
+      : `合计 ${ui.formatNumber(汇总[指标.key])} · 共 ${汇总.条数} 条`;
+
+  return `
+  <div class="chart-box">
+    <div class="chart-box-head">
+      <span class="chart-box-name">${ui.escapeHtml(指标.名称)}</span>
+      <span class="chart-box-value">${ui.escapeHtml(显示值(最新, 指标.单位))}</span>
+    </div>
+    ${图 || '<p class="hint">这个范围里还没有数据</p>'}
+    <div class="chart-box-foot">${ui.escapeHtml(脚注)}</div>
+  </div>`;
+}
+
+function 显示值(v, 单位) {
+  const n = Number(v) || 0;
+  return 单位 === '%' ? `${n}%` : ui.formatNumber(n);
+}
+
+/** 复盘明细的一行：四个数字 + 链接都能就地改 */
+function 复盘明细行(c) {
+  const 格 = (字段, 占位, 宽) => `
+    <input type="text" class="field-input" style="width:${宽}px" data-action="media:复盘字段"
+      data-id="${ui.escapeHtml(c.id)}" data-field="${字段}"
+      placeholder="${占位}" value="${c[字段] ? ui.escapeHtml(String(c[字段])) : ''}">`;
+
+  return `
+  <div class="list-row">
+    <span class="grow ellipsis" title="${ui.escapeHtml(c.标题)}">${ui.escapeHtml(c.标题)}</span>
+    <span class="tag tag-blue">${ui.escapeHtml(c.平台 || '未填')}</span>
+    <span class="hint">${ui.escapeHtml(formatShortDate(c.发布日期))}</span>
+    ${格('播放数', '播放', 70)}
+    ${格('点赞数', '赞', 56)}
+    ${格('完播率', '完播%', 62)}
+    ${格('互动率', '互动%', 62)}
+    <input type="text" class="field-input grow" data-action="media:复盘链接" data-id="${ui.escapeHtml(
+      c.id
+    )}" placeholder="作品链接（可留空）" value="${ui.escapeHtml(c.链接 || '')}">
+    ${ui.deleteButton({ action: 'media:复盘删', id: c.id, label: '删' })}
+  </div>`;
+}
+
+/** 数据复盘面板：四个关键指标的趋势 + 可就地填数的明细 */
+function 数据复盘(ctx) {
+  const 范围 = { 平台: ui_state.复盘平台, 条数: ui_state.复盘条数 };
+  const 点 = metricSeries(ctx.data, 范围);
+  const 汇总 = metricSummary(点);
+  const 明细 = 复盘明细(ctx.data, 范围);
+  const 平台们 = 平台列表(ctx.data);
+
+  return `
+  ${ui.sectionTitle('看哪一批', '<span class="hint">下面四张图和明细都跟着这个筛选走</span>')}
+  <div class="toolbar">
+    <select class="field-input" data-action="media:复盘平台">
+      <option value="">全部平台</option>
+      ${平台们
+        .map(
+          (p) =>
+            `<option value="${ui.escapeHtml(p)}"${
+              ui_state.复盘平台 === p ? ' selected' : ''
+            }>${ui.escapeHtml(p)}</option>`
+        )
+        .join('')}
+    </select>
+    <select class="field-input" data-action="media:复盘条数">
+      ${[6, 12, 24, 0]
+        .map(
+          (n) =>
+            `<option value="${n}"${ui_state.复盘条数 === n ? ' selected' : ''}>${
+              n === 0 ? '全部' : `最近 ${n} 条`
+            }</option>`
+        )
+        .join('')}
+    </select>
+    <select class="field-input" data-action="media:图表类型">
+      ${['折线', '柱状']
+        .map(
+          (t) => `<option value="${t}"${ui_state.图表类型 === t ? ' selected' : ''}>${t}图</option>`
+        )
+        .join('')}
+    </select>
+  </div>
+
+  <div class="chart-grid-2">
+    ${METRICS.map((m) => 指标盒(m, 点, 汇总)).join('')}
+  </div>
+
+  ${ui.sectionTitle('明细', '<span class="hint">数字填完、光标离开输入框就存下来</span>')}
+  <div class="list">
+    ${
+      明细.length === 0
+        ? '<p class="hint">这个范围里还没有内容。先去「选题池」发布一条，或者在「内容记录」里直接记一条已经发出去的。</p>'
+        : 明细.map(复盘明细行).join('')
+    }
+  </div>
+  <p class="hint">播放、点赞按平台后台的数字手工填；完播率和互动率填百分数（0–100，填超了会自动夹回去）。这个工具不联网，不会自己去抓任何平台数据。</p>`;
+}
+
 function 数据回看(ctx) {
   const m = mediaSummary(ctx.data, ctx.today);
   const 平台 = Object.entries(m.平台分布).sort((a, b) => b[1] - a[1]);
@@ -411,6 +530,8 @@ export default {
           ? 内容日历(ctx)
           : ui_state.标签 === '素材与待办'
           ? 素材(ctx)
+          : ui_state.标签 === '数据复盘'
+          ? 数据复盘(ctx)
           : 数据回看(ctx)
       }
     </div>`;
@@ -541,6 +662,34 @@ export default {
       ctx.store.update((d) => updateContent(d, id, { 点赞数: el.value }), { silent: true });
     },
     'media:del-content': (el, ctx, id) => {
+      ctx.store.update((d) => removeContent(d, id));
+    },
+
+    // ---- 数据复盘 ----
+    'media:复盘平台': (el, ctx) => {
+      ui_state.复盘平台 = el.value || '';
+      ctx.rerender();
+    },
+    'media:复盘条数': (el, ctx) => {
+      const n = Number(el.value);
+      ui_state.复盘条数 = Number.isFinite(n) && n >= 0 ? n : 12;
+      ctx.rerender();
+    },
+    'media:图表类型': (el, ctx) => {
+      ui_state.图表类型 = el.value === '柱状' ? '柱状' : '折线';
+      ctx.rerender();
+    },
+    'media:复盘字段': (el, ctx, id) => {
+      const 字段 = el.dataset.field;
+      if (!['播放数', '点赞数', '完播率', '互动率'].includes(字段)) return;
+      // 填空白等于清成 0，这是符合直觉的：她清空了输入框就是不想记这个数
+      const 值 = String(el.value || '').trim() === '' ? 0 : el.value;
+      ctx.store.update((d) => updateContent(d, id, { [字段]: 值 }), { silent: true });
+    },
+    'media:复盘链接': (el, ctx, id) => {
+      ctx.store.update((d) => updateContent(d, id, { 链接: el.value }), { silent: true });
+    },
+    'media:复盘删': (el, ctx, id) => {
       ctx.store.update((d) => removeContent(d, id));
     },
     'media:focus-material': () => {
