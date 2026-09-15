@@ -29,7 +29,7 @@ describe('六个模块的汇总（PRD §3.4 摘要卡的算法）', () => {
     assert.equal(m.本周发布, 2);
     // a1 待处理 / a2 处理中 / a3 待处理，a4 已完成不算
     assert.equal(m.待处理素材, 3);
-    assert.deepEqual(m.阶段, { 灵感: 1, 制作中: 1, 已发布: 1 });
+    assert.deepEqual(m.阶段, { 灵感捕获: 1, '脚本/制作': 1, 待发布: 1, 已发布: 1 });
     assert.equal(m.总播放, 120 + 340 + 900);
     assert.equal(m.总点赞, 8 + 22 + 50);
   });
@@ -38,7 +38,7 @@ describe('六个模块的汇总（PRD §3.4 摘要卡的算法）', () => {
     const m = mediaSummary(emptyData(), TODAY);
     assert.equal(m.本周发布, 0);
     assert.equal(m.待处理素材, 0);
-    assert.deepEqual(m.阶段, { 灵感: 0, 制作中: 0, 已发布: 0 });
+    assert.deepEqual(m.阶段, { 灵感捕获: 0, '脚本/制作': 0, 待发布: 0, 已发布: 0 });
   });
 
   test('开发：功能与 Bug 跨项目统计，今日计时只算今天', () => {

@@ -3,7 +3,39 @@
 import { newId, addFromModule } from './tasks.js';
 import { todayKey, inRange, weekRange } from '../dates.js';
 
-export const STAGES = ['灵感', '制作中', '已发布'];
+/**
+ * 创作工作流的四个阶段（PRD §5.3）。
+ * 第一版只有「灵感 / 制作中 / 已发布」三个，第二版拆成四个，
+ * 中间多出「待发布」这一站，读盘与导入时会自动把老数据映射过来。
+ */
+export const STAGES = ['灵感捕获', '脚本/制作', '待发布', '已发布'];
+
+/** 旧阶段名 → 新阶段名（迁移用，两份实现必须一致：这里与 blank.js / datafile.js） */
+export const 阶段映射 = {
+  灵感: '灵感捕获',
+  制作中: '脚本/制作',
+  已发布: '已发布',
+  灵感捕获: '灵感捕获',
+  '脚本/制作': '脚本/制作',
+  待发布: '待发布',
+};
+
+/** 每一列空着时给的引导语 */
+export const 阶段提示 = {
+  灵感捕获: '把念头丢进来',
+  '脚本/制作': '从左边拖过来',
+  待发布: '做完的往这儿挪',
+  已发布: '发布之后卡片会落到这里',
+};
+
+/** 加进今日计划时，按阶段给一句提示 */
+export const 阶段动作 = {
+  灵感捕获: '先想清楚要拍什么',
+  '脚本/制作': '继续做',
+  待发布: '准备发布',
+  已发布: '补一下数据',
+};
+
 export const MATERIAL_TYPES = ['视频', '音频', '图片', '字幕'];
 export const MATERIAL_STATES = ['待处理', '处理中', '已完成'];
 
@@ -28,7 +60,7 @@ export function addIdea(data, 标题, extra = {}, today = todayKey()) {
   const idea = {
     id: newId('i'),
     标题: text,
-    阶段: STAGES.includes(extra.阶段) ? extra.阶段 : '灵感',
+    阶段: STAGES.includes(extra.阶段) ? extra.阶段 : STAGES[0],
     平台: extra.平台 || '',
     创建日期: extra.创建日期 || today,
     备注: extra.备注 || '',
@@ -58,10 +90,11 @@ export function removeIdea(data, id) {
 }
 
 export function ideasByStage(data) {
-  const out = { 灵感: [], 制作中: [], 已发布: [] };
+  const out = {};
+  for (const s of STAGES) out[s] = [];
   for (const idea of data.自媒体.选题) {
     if (out[idea.阶段]) out[idea.阶段].push(idea);
-    else out.灵感.push(idea);
+    else out[STAGES[0]].push(idea);
   }
   return out;
 }
@@ -276,8 +309,7 @@ export function materialStats(data) {
 export function ideaToToday(data, ideaId, today = todayKey()) {
   const idea = findIdea(data, ideaId);
   if (!idea) return { ok: false, error: '这个选题已经不在了' };
-  const 阶段动作 =
-    idea.阶段 === '灵感' ? '先想清楚要拍什么' : idea.阶段 === '制作中' ? '继续做' : '补一下数据';
-  const r = addFromModule(data, today, { 标题: `${idea.标题}（${阶段动作}）`, 归属: 'media' });
+  const 动作 = 阶段动作[idea.阶段] || '接着做';
+  const r = addFromModule(data, today, { 标题: `${idea.标题}（${动作}）`, 归属: 'media' });
   return { ok: true, task: r.task, 已存在: r.已存在 };
 }

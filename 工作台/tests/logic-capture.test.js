@@ -108,12 +108,12 @@ describe('Cmd+K 快速记一笔（logic/quickcapture.js）', () => {
     assert.equal(t.优先级, '高');
   });
 
-  test('存成自媒体选题，默认落在「灵感」阶段', () => {
+  test('存成自媒体选题，默认落在第一阶段「灵感捕获」', () => {
     const d = emptyData();
     const r = submitQuick(d, { target: 'media', text: '老电脑装 Linux', today: TODAY });
     assert.equal(r.ok, true);
     assert.equal(d.自媒体.选题.length, 1);
-    assert.equal(d.自媒体.选题[0].阶段, '灵感');
+    assert.equal(d.自媒体.选题[0].阶段, '灵感捕获');
     assert.equal(d.自媒体.选题[0].创建日期, TODAY);
   });
 

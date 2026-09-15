@@ -79,12 +79,12 @@ describe('直接记一条内容（不经过选题）', () => {
 });
 
 describe('自媒体页面的「内容记录」区', () => {
-  test('创作流程是两栏：左边三列看板，右边内容记录', () => {
+  test('创作流程是两栏：左边四列看板，右边内容记录', () => {
     resetViewState();
     const html = mediaView.render(ctxOf(richData()));
     assert.match(html, /class="workflow"/);
-    // 左边：三列看板还在
-    assert.equal((html.match(/class="kanban-col"/g) || []).length, 3);
+    // 左边：四阶段看板还在
+    assert.equal((html.match(/class="kanban-col"/g) || []).length, 4);
     // 右边：内容记录的表单四个字段 + 记上按钮
     assert.match(html, /data-role="content-标题"/);
     assert.match(html, /data-role="content-平台"/);

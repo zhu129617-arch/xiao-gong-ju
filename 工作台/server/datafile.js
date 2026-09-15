@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-export const CURRENT_VERSION = 2;
+export const CURRENT_VERSION = 3;
 
 /**
  * 数据文件的完整默认结构（对应 PRD §7.2）。
@@ -78,6 +78,37 @@ export function 迁移开发数据(开发) {
   return 开发;
 }
 
+/** 旧阶段名 → 新阶段名。与 public/js/logic/blank.js、logic/media.js 里三份必须一致 */
+export const 阶段映射 = {
+  灵感: '灵感捕获',
+  制作中: '脚本/制作',
+  已发布: '已发布',
+  灵感捕获: '灵感捕获',
+  '脚本/制作': '脚本/制作',
+  待发布: '待发布',
+};
+
+/**
+ * 把自媒体选题的旧阶段名迁移到四阶段工作流
+ * （灵感 → 灵感捕获 / 制作中 → 脚本/制作，中间多出「待发布」一站）。
+ * 幂等：跑几次结果都一样。
+ */
+export function 迁移自媒体数据(自媒体) {
+  if (!自媒体 || typeof 自媒体 !== 'object') return 自媒体;
+  for (const idea of Array.isArray(自媒体.选题) ? 自媒体.选题 : []) {
+    idea.阶段 = 阶段映射[idea.阶段] || '灵感捕获';
+  }
+  return 自媒体;
+}
+
+/** 把一份数据里所有需要升级的结构一次迁完 */
+export function 迁移数据(data) {
+  if (!data || typeof data !== 'object') return data;
+  迁移开发数据(data.开发);
+  迁移自媒体数据(data.自媒体);
+  return data;
+}
+
 /** 需要按对象合并（而不是整体覆盖）的一级键 */
 const OBJECT_SECTIONS = ['设置', '自媒体', '开发', '咨询', '健身', '饮食', '游戏', '元'];
 
@@ -94,7 +125,7 @@ export function normalize(raw) {
     const v = raw[key];
     out[key] = v && typeof v === 'object' && !Array.isArray(v) ? { ...b, ...v } : { ...b };
   }
-  迁移开发数据(out.开发);
+  迁移数据(out);
   out.版本 = CURRENT_VERSION;
   return out;
 }

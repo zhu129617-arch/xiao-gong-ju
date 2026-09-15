@@ -7,26 +7,40 @@ import * as consult from '../public/js/logic/consult.js';
 import { tasksOf } from '../public/js/logic/tasks.js';
 
 describe('自媒体逻辑（logic/media.js）', () => {
-  test('新增选题：去空格、拒绝空标题、默认落在灵感', () => {
+  test('新增选题：去空格、拒绝空标题、默认落在第一阶段「灵感捕获」', () => {
     const d = emptyData();
     const idea = media.addIdea(d, '  老电脑装 Linux  ', {}, TODAY);
     assert.equal(idea.标题, '老电脑装 Linux');
-    assert.equal(idea.阶段, '灵感');
+    assert.equal(idea.阶段, '灵感捕获');
     assert.equal(idea.创建日期, TODAY);
     assert.throws(() => media.addIdea(d, '   '), /不能为空/);
     assert.equal(d.自媒体.选题.length, 1);
   });
 
-  test('看板分列：三个阶段各自成列', () => {
+  test('看板分列：四个阶段各自成列', () => {
     const byStage = media.ideasByStage(richData());
-    assert.equal(byStage.灵感.length, 1);
-    assert.equal(byStage.制作中.length, 1);
+    assert.deepEqual(
+      media.STAGES,
+      ['灵感捕获', '脚本/制作', '待发布', '已发布'],
+      '创作流程是四站'
+    );
+    assert.equal(byStage['灵感捕获'].length, 1);
+    assert.equal(byStage['脚本/制作'].length, 1);
+    assert.equal(byStage.待发布.length, 1);
     assert.equal(byStage.已发布.length, 1);
   });
 
-  test('推进阶段：灵感 → 制作中 → 已发布，已发布是最后一站', () => {
-    assert.equal(media.nextStage('灵感'), '制作中');
-    assert.equal(media.nextStage('制作中'), '已发布');
+  test('认不出的阶段名不丢数据，兜到第一列', () => {
+    const d = richData();
+    d.自媒体.选题.push({ id: 'ix', 标题: '来路不明的', 阶段: '瞎写的', 平台: '', 创建日期: TODAY, 备注: '' });
+    const byStage = media.ideasByStage(d);
+    assert.equal(byStage['灵感捕获'].length, 2);
+  });
+
+  test('推进阶段：灵感捕获 → 脚本/制作 → 待发布 → 已发布，已发布是最后一站', () => {
+    assert.equal(media.nextStage('灵感捕获'), '脚本/制作');
+    assert.equal(media.nextStage('脚本/制作'), '待发布');
+    assert.equal(media.nextStage('待发布'), '已发布');
     assert.equal(media.nextStage('已发布'), null);
   });
 

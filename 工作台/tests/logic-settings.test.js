@@ -99,7 +99,7 @@ describe('设置逻辑（logic/settings.js）', () => {
   test('按模块清空：只动选中的那块', () => {
     const d = richData();
     const 影响 = S.clearSectionImpact(d, '自媒体');
-    assert.equal(影响, 3 + 3 + 4, '选题 3 + 内容 3 + 素材 4');
+    assert.equal(影响, 4 + 3 + 4, '选题 4 + 内容 3 + 素材 4');
 
     const r = S.clearSection(d, '自媒体');
     assert.equal(r.ok, true);

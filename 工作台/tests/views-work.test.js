@@ -56,22 +56,25 @@ describe('自媒体页面（views/media.js）', () => {
     assert.match(html, /加一个选题/);
   });
 
-  test('选题池是三列看板，每列有数量，卡片可拖', () => {
+  test('选题池是四列看板，每列有数量，卡片可拖', () => {
     resetMedia();
     const html = mediaView.render(ctxOf(richData(), 'media'));
-    assert.equal((html.match(/class="kanban-col"/g) || []).length, 3);
-    assert.match(html, /data-stage="灵感"/);
-    assert.match(html, /data-stage="制作中"/);
+    assert.equal((html.match(/class="kanban-col"/g) || []).length, 4);
+    assert.match(html, /data-stage="灵感捕获"/);
+    assert.match(html, /data-stage="脚本\/制作"/);
+    assert.match(html, /data-stage="待发布"/);
     assert.match(html, /data-stage="已发布"/);
-    assert.equal((html.match(/class="kanban-card" draggable="true"/g) || []).length, 3);
+    assert.equal((html.match(/class="kanban-card" draggable="true"/g) || []).length, 4);
     assert.match(html, /data-idea="i1"/);
   });
 
   test('每个非最终阶段都有「→ 下一阶段」这个不依赖拖动的备用路径', () => {
     resetMedia();
     const html = mediaView.render(ctxOf(richData(), 'media'));
-    assert.match(html, /data-action="media:next" data-id="i1">→ 制作中</);
-    assert.match(html, /data-action="media:next" data-id="i2">→ 已发布</);
+    assert.match(html, /data-action="media:next" data-id="i1">→ 脚本\/制作</);
+    assert.match(html, /data-action="media:next" data-id="i2">→ 待发布</);
+    assert.match(html, /data-action="media:next" data-id="i4">→ 已发布</);
+    // 已发布是最后一站，没有「下一阶段」
     assert.equal(/data-action="media:next" data-id="i3"/.test(html), false);
   });
 
@@ -79,24 +82,24 @@ describe('自媒体页面（views/media.js）', () => {
     resetMedia();
     const d = richData();
     const ctx = ctxOf(d, 'media');
-    act(mediaView, 'media:next', ctx, { id: 'i2' });
+    act(mediaView, 'media:next', ctx, { id: 'i4' });
 
-    assert.equal(d.自媒体.选题.find((i) => i.id === 'i2').阶段, '已发布');
+    assert.equal(d.自媒体.选题.find((i) => i.id === 'i4').阶段, '已发布');
     const html = mediaView.render(ctx);
     assert.match(html, /class="kanban-form"/);
     assert.match(html, /data-role="platform"/);
     assert.match(html, /data-role="pubdate"/);
     assert.match(html, /data-role="link"/);
-    assert.match(html, /data-action="media:登记发布" data-id="i2"/);
+    assert.match(html, /data-action="media:登记发布" data-id="i4"/);
   });
 
   test('登记发布：内容被建出来，之后不再展开表单', () => {
     resetMedia();
     const d = richData();
     const ctx = ctxOf(d, 'media');
-    act(mediaView, 'media:next', ctx, { id: 'i2' });
+    act(mediaView, 'media:next', ctx, { id: 'i4' });
     act(mediaView, 'media:登记发布', ctx, {
-      id: 'i2',
+      id: 'i4',
       card: card({
         '[data-role="platform"]': 'B站',
         '[data-role="pubdate"]': '2026-09-15',
@@ -106,7 +109,7 @@ describe('自媒体页面（views/media.js）', () => {
 
     assert.equal(d.自媒体.内容.length, 4);
     const 新内容 = d.自媒体.内容[3];
-    assert.equal(新内容.关联选题, 'i2');
+    assert.equal(新内容.关联选题, 'i4');
     assert.equal(新内容.平台, 'B站');
     assert.equal(新内容.发布日期, '2026-09-15');
 

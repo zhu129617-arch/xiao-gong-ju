@@ -7,7 +7,7 @@
  * 任何一边改了字段而另一边没跟上，测试会立刻红。
  */
 
-export const CURRENT_FORMAT_VERSION = 2;
+export const CURRENT_FORMAT_VERSION = 3;
 
 /** 开发模块的五个层级（自上而下：项目 → 里程碑 → 功能列表 → Bug 追踪 → 开发日志） */
 export const DEV_LEVELS = ['项目', '里程碑', '功能', 'Bug', '日志'];
@@ -88,4 +88,34 @@ export function 迁移开发数据(开发) {
 
   开发.功能 = 功能;
   return { 开发, 迁移了 };
+}
+
+/** 旧阶段名 → 新阶段名。与 server/datafile.js、logic/media.js 里三份必须一致 */
+export const 阶段映射 = {
+  灵感: '灵感捕获',
+  制作中: '脚本/制作',
+  已发布: '已发布',
+  灵感捕获: '灵感捕获',
+  '脚本/制作': '脚本/制作',
+  待发布: '待发布',
+};
+
+/**
+ * 把自媒体选题的旧阶段名迁移到四阶段工作流。
+ * 幂等：新阶段名映射回自己，跑几次都一样。
+ */
+export function 迁移自媒体数据(自媒体) {
+  if (!自媒体 || typeof 自媒体 !== 'object') return 自媒体;
+  for (const idea of Array.isArray(自媒体.选题) ? 自媒体.选题 : []) {
+    idea.阶段 = 阶段映射[idea.阶段] || '灵感捕获';
+  }
+  return 自媒体;
+}
+
+/** 把一份数据里所有需要升级的结构一次迁完 */
+export function 迁移数据(data) {
+  if (!data || typeof data !== 'object') return data;
+  迁移开发数据(data.开发);
+  迁移自媒体数据(data.自媒体);
+  return data;
 }

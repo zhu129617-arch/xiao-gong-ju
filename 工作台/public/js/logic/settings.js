@@ -5,7 +5,7 @@
  * 免得导入一个坏文件之后把现有数据搞成半死不活的状态。
  */
 
-import { blankData, blankSection, CURRENT_FORMAT_VERSION, 迁移开发数据 } from './blank.js';
+import { blankData, blankSection, CURRENT_FORMAT_VERSION, 迁移数据 } from './blank.js';
 import { ALWAYS_VISIBLE, MODULES, isModuleKey } from '../modules.js';
 
 /** 可以单独清空的模块（对应数据文件里的一级键） */
@@ -79,8 +79,8 @@ export function normalizeImport(raw) {
     const v = raw[key];
     out[key] = v && typeof v === 'object' && !Array.isArray(v) ? { ...b, ...v } : { ...b };
   }
-  // 旧备份里的「任务列表」并进新的【功能列表】
-  迁移开发数据(out.开发);
+  // 旧备份里的结构升级（项目的任务列表 → 功能列表、选题的旧阶段名 → 四阶段）
+  迁移数据(out);
   out.版本 = CURRENT_FORMAT_VERSION;
   return out;
 }

@@ -7,6 +7,7 @@
 
 import { newId, addTask } from './tasks.js';
 import { addFeature } from './dev.js';
+import { STAGES } from './media.js';
 import { addMemo } from './memo.js';
 import * as ui from '../ui.js';
 import { todayKey } from '../dates.js';
@@ -65,7 +66,7 @@ export function submitQuick(data, form = {}) {
     data.自媒体.选题.push({
       id: newId('i'),
       标题: text,
-      阶段: '灵感',
+      阶段: STAGES[0],
       平台: '',
       创建日期: today,
       备注: '',

@@ -43,7 +43,7 @@ export function mediaSummary(data, today = todayKey()) {
   const 本周发布 = contents.filter((c) => c.发布日期 && inRange(c.发布日期, start, end)).length;
   const 待处理素材 = materials.filter((m) => m.状态 !== '已完成').length;
 
-  const 阶段 = { 灵感: 0, 制作中: 0, 已发布: 0 };
+  const 阶段 = { 灵感捕获: 0, '脚本/制作': 0, 待发布: 0, 已发布: 0 };
   for (const idea of ideas) {
     if (阶段[idea.阶段] !== undefined) 阶段[idea.阶段] += 1;
   }

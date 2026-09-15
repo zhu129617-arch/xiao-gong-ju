@@ -4,6 +4,7 @@ import { mediaSummary } from '../logic/summary.js';
 import { addFromModule } from '../logic/tasks.js';
 import {
   STAGES,
+  阶段提示,
   MATERIAL_TYPES,
   MATERIAL_STATES,
   platformOptions,
@@ -219,9 +220,7 @@ function 选题池(ctx) {
             <div class="kanban-col-title"><span>${stage}</span><span>${byStage[stage].length}</span></div>
             ${
               byStage[stage].length === 0
-                ? `<p class="hint">${
-                    stage === '灵感' ? '把念头丢进来' : stage === '制作中' ? '从左边把卡片拖过来' : '发布之后卡片会落到这里'
-                  }</p>`
+                ? `<p class="hint">${ui.escapeHtml(阶段提示[stage] || '拖过来')}</p>`
                 : byStage[stage].map((idea) => 选题卡片(ctx, idea)).join('')
             }
           </div>`

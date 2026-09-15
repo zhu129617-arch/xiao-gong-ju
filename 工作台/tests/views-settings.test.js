@@ -122,7 +122,7 @@ describe('设置页面（views/settings.js）', () => {
 
     const 有数据 = settingsView.render(ctxOf(richData()));
     assert.match(有数据, /今日计划（含所有历史日程）[\s\S]{0,80}2 条/);
-    assert.match(有数据, /自媒体（选题、内容、素材）[\s\S]{0,80}10 条/);
+    assert.match(有数据, /自媒体（选题、内容、素材）[\s\S]{0,80}11 条/);
   });
 
   test('导出：下载的文件名和内容都对', () => {
@@ -202,7 +202,7 @@ describe('设置页面（views/settings.js）', () => {
       files: [{ text: async () => JSON.stringify({ 版本: 99, 备忘: [] }) }],
     });
     assert.equal(ctx.调用.setData.length, 0);
-    assert.match(settingsView.render(ctx), /只认到第 2 版/);
+    assert.match(settingsView.render(ctx), new RegExp(`只认到第 3 版`));
   });
 
   test('清空要走两步：点一次只是问，再点确认才真清', () => {
@@ -210,13 +210,13 @@ describe('设置页面（views/settings.js）', () => {
     const ctx = ctxOf(d);
 
     act(settingsView, 'settings:清空', ctx, { id: '自媒体' });
-    assert.equal(d.自媒体.选题.length, 3, '第一步不该动数据');
+    assert.equal(d.自媒体.选题.length, 4, '第一步不该动数据');
     let html = settingsView.render(ctx);
     assert.match(html, /data-action="settings:清空确认" data-id="自媒体"/);
     assert.match(html, /data-action="settings:清空取消"/);
 
     act(settingsView, 'settings:清空取消', ctx);
-    assert.equal(d.自媒体.选题.length, 3);
+    assert.equal(d.自媒体.选题.length, 4);
     html = settingsView.render(ctx);
     assert.equal(/data-action="settings:清空确认"/.test(html), false);
   });
@@ -231,7 +231,7 @@ describe('设置页面（views/settings.js）', () => {
     const 快照 = fetch记录.find((f) => f.url === '/api/snapshot');
     assert.ok(快照);
     assert.match(快照.body, /清空前备份/);
-    assert.match(settingsView.render(ctx), /已清空「自媒体（选题、内容、素材）」，之前有 10 条/);
+    assert.match(settingsView.render(ctx), /已清空「自媒体（选题、内容、素材）」，之前有 11 条/);
   });
 
   test('打开数据文件夹', async () => {
