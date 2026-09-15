@@ -240,6 +240,53 @@ export function nextFeatureState(状态) {
   return i < 0 || i >= FEATURE_STATES.length - 1 ? null : FEATURE_STATES[i + 1];
 }
 
+/** 列表模式的聚合方式 */
+export const GROUP_BY = ['里程碑', '优先级'];
+
+/** 组内排序用的次序：进行中的排最前，已完成的排最后 */
+export const 状态次序 = { 进行中: 0, 待办: 1, 已完成: 2 };
+const 优先级次序 = { 高: 0, 中: 1, 低: 2, 无: 3 };
+
+/** 组内排序：先按优先级（高 → 中 → 低 → 无），同优先级再按状态 */
+export function 比较功能(a, b) {
+  const p = (优先级次序[a.优先级] ?? 9) - (优先级次序[b.优先级] ?? 9);
+  if (p !== 0) return p;
+  return (状态次序[a.状态] ?? 9) - (状态次序[b.状态] ?? 9);
+}
+
+/**
+ * 列表模式的聚合：
+ *   依据 = '里程碑' → 每个里程碑一组，没归里程碑的落到「未归入里程碑」（空里程碑也保留，那是有意义的）
+ *   依据 = '优先级' → 高/中/低/无 各一组，空的几档收掉（没信息量）
+ * 组内都按「先优先级、再状态」排序。
+ */
+export function groupFeatures(data, projectId, 依据 = '里程碑') {
+  const list = featuresOf(data, projectId);
+  const 组 = [];
+  const 表 = new Map();
+  const 建组 = (key, 名称) => {
+    const g = { key, 名称, 项: [] };
+    组.push(g);
+    表.set(key, g);
+    return g;
+  };
+
+  if (依据 === '优先级') {
+    for (const p of PRIORITY_OPTIONS) 建组(p, `优先级 ${p}`);
+    for (const f of list) (表.get(f.优先级) || 表.get('无')).项.push(f);
+  } else {
+    for (const m of milestonesOf(data, projectId)) 建组(m.id, m.名称);
+    const 未归 = 建组('', '未归入里程碑');
+    for (const f of list) {
+      const g = (f.所属里程碑 && 表.get(f.所属里程碑)) || 未归;
+      g.项.push(f);
+    }
+  }
+
+  for (const g of 组) g.项.sort(比较功能);
+  return 依据 === '优先级' ? 组.filter((g) => g.项.length > 0) : 组;
+}
+
 // ---------- 第四层：Bug 追踪 ----------
 
 export function addBug(data, projectId, 标题, extra = {}, today = todayKey()) {

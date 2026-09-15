@@ -7,6 +7,7 @@ import {
   FEATURE_STATES,
   BUG_STATES,
   BUG_LEVELS,
+  PRIORITY_OPTIONS,
   addProject,
   findProject,
   updateProject,
@@ -23,7 +24,9 @@ import {
   moveFeature,
   removeFeature,
   featuresByState,
+  featuresOf,
   nextFeatureState,
+  groupFeatures,
   addBug,
   findBug,
   moveBug,
@@ -61,6 +64,9 @@ const ui_state = {
   新Bug严重程度: '一般',
   // 归档区默认收起来，免得看板越用越长
   展开归档: false,
+  // 功能列表的两种看：看板（按状态流转）/ 列表（按优先级与里程碑聚合）
+  视图模式: '看板',
+  列表分组: '里程碑',
 };
 
 export function resetViewState() {
@@ -71,6 +77,8 @@ export function resetViewState() {
   ui_state.新Bug里程碑 = null;
   ui_state.新Bug严重程度 = '一般';
   ui_state.展开归档 = false;
+  ui_state.视图模式 = '看板';
+  ui_state.列表分组 = '里程碑';
 }
 
 function 提示线() {
@@ -242,9 +250,9 @@ function 功能卡(f, 里程碑名) {
               )}">← 退回</button>`
         }
         <select class="field-input" data-action="dev:功能优先级" data-id="${ui.escapeHtml(f.id)}">
-          ${['高', '中', '低', '无']
-            .map((p) => `<option value="${p}"${f.优先级 === p ? ' selected' : ''}>${p}</option>`)
-            .join('')}
+          ${PRIORITY_OPTIONS.map(
+            (p) => `<option value="${p}"${f.优先级 === p ? ' selected' : ''}>${p}</option>`
+          ).join('')}
         </select>
         <button type="button" class="btn btn-sm" data-action="dev:功能入计划" data-id="${ui.escapeHtml(
           f.id
@@ -279,11 +287,12 @@ function 功能列(project, 状态, list, 里程碑名) {
       </div>`;
 }
 
-/** 第三层：功能列表（看板） */
-function 功能看板(ctx, project) {
+/** 第三层：功能列表。两种模式一键切换：看板（按状态流转）/ 列表（按优先级与里程碑聚合） */
+function 功能区(ctx, project) {
+  const 模式 = ui_state.视图模式;
   const byState = featuresByState(ctx.data, project.id);
-  const 里程碑名 = new Map(milestonesOf(ctx.data, project.id).map((m) => [m.id, m.名称]));
   const 里程碑选项 = milestonesOf(ctx.data, project.id);
+  const 里程碑名 = new Map(里程碑选项.map((m) => [m.id, m.名称]));
 
   return `
   <div class="card">
@@ -293,6 +302,11 @@ function 功能看板(ctx, project) {
       <span class="hint">${byState.待办.length} 待办 · ${byState.进行中.length} 进行中 · ${byState.已完成.length} 已完成</span>
     </div>
     <div class="card-body">
+      <div class="tabs">
+        <button type="button" class="tab${模式 === '看板' ? ' is-on' : ''}" data-action="dev:切换视图" data-id="看板">看板模式</button>
+        <button type="button" class="tab${模式 === '列表' ? ' is-on' : ''}" data-action="dev:切换视图" data-id="列表">列表模式</button>
+      </div>
+
       <div class="toolbar">
         ${ui.inlineInput({ action: 'dev:加功能', id: project.id, placeholder: '加一条功能，回车保存' })}
         ${
@@ -311,13 +325,94 @@ function 功能看板(ctx, project) {
             : ''
         }
       </div>
-      <div class="kanban">
-        ${FEATURE_STATES.map((状态) => 功能列(project, 状态, byState[状态], 里程碑名)).join('')}
-      </div>
-      <p class="hint" style="margin-top:10px">功能卡可以拖到别的列；拖不动的话，每张卡上都有「→ 下一阶段」按钮。</p>
-      <p class="hint">勾上卡片左上角的小方框就算完成：状态自动变「已完成」、收进归档，并自动在下面的开发日志里落一条。取消勾选会把那条自动日志一并撤掉。</p>
+
+      ${模式 === '看板' ? 看板视图(project, byState, 里程碑名) : 列表视图(ctx, project)}
+
+      <p class="hint" style="margin-top:10px">${
+        模式 === '看板'
+          ? '功能卡可以拖到别的列；拖不动的话，每张卡上都有「→ 下一阶段」按钮。'
+          : '列表按你选的方式聚合，组内先按优先级、再按状态排。'
+      }</p>
+      <p class="hint">勾上小方框就算完成：状态自动变「已完成」、收进归档，并自动在下面的开发日志里落一条。取消勾选会把那条自动日志一并撤掉。</p>
     </div>
   </div>`;
+}
+
+function 看板视图(project, byState, 里程碑名) {
+  return `<div class="kanban">
+        ${FEATURE_STATES.map((状态) => 功能列(project, 状态, byState[状态], 里程碑名)).join('')}
+      </div>`;
+}
+
+/** 列表模式：按里程碑 或 按优先级聚合 */
+function 列表视图(ctx, project) {
+  const 依据 = ui_state.列表分组;
+  const groups = groupFeatures(ctx.data, project.id, 依据);
+  const 里程碑选项 = milestonesOf(ctx.data, project.id);
+
+  return `
+      <div class="tabs" style="margin-bottom:10px">
+        ${['里程碑', '优先级']
+          .map(
+            (g) =>
+              `<button type="button" class="tab${依据 === g ? ' is-on' : ''}" data-action="dev:列表分组" data-id="${g}">按${g}聚合</button>`
+          )
+          .join('')}
+      </div>
+      ${
+        featuresOf(ctx.data, project.id).length === 0
+          ? '<p class="hint">这个项目还没有功能。</p>'
+          : groups
+              .map(
+                (g) => `
+      ${ui.sectionTitle(g.名称, `<span class="hint">${g.项.length}</span>`)}
+      <div class="list">
+        ${
+          g.项.length === 0
+            ? '<p class="hint">空</p>'
+            : g.项.map((f) => 列表行(f, 里程碑选项)).join('')
+        }
+      </div>`
+              )
+              .join('')
+      }`;
+}
+
+function 优先级标签(优先级) {
+  const 色 = { 高: 'tag-pink', 中: 'tag-amber', 低: 'tag-blue', 无: 'tag-gray' };
+  return `<span class="tag ${色[优先级] || 'tag-gray'}">${ui.escapeHtml(优先级 || '无')}</span>`;
+}
+
+function 列表行(f, 里程碑选项) {
+  const 已完成 = f.状态 === '已完成';
+  return `
+    <div class="list-row">
+      ${ui.checkbox(已完成, 'dev:勾选功能', f.id)}
+      ${优先级标签(f.优先级)}
+      <span class="grow${已完成 ? ' is-done' : ''}" style="word-break:break-word">${ui.escapeHtml(f.标题)}</span>
+      <select class="field-input" data-action="dev:功能状态" data-id="${ui.escapeHtml(f.id)}">
+        ${FEATURE_STATES.map((s) => `<option value="${s}"${f.状态 === s ? ' selected' : ''}>${s}</option>`).join('')}
+      </select>
+      ${
+        里程碑选项.length
+          ? `<select class="field-input" data-action="dev:功能里程碑" data-id="${ui.escapeHtml(f.id)}">
+        <option value="">（不归里程碑）</option>
+        ${里程碑选项
+          .map(
+            (m) =>
+              `<option value="${ui.escapeHtml(m.id)}"${f.所属里程碑 === m.id ? ' selected' : ''}>${ui.escapeHtml(
+                m.名称
+              )}</option>`
+          )
+          .join('')}
+      </select>`
+          : ''
+      }
+      <button type="button" class="btn btn-sm" data-action="dev:功能入计划" data-id="${ui.escapeHtml(
+        f.id
+      )}">加进今日计划</button>
+      ${ui.deleteButton({ action: 'dev:删功能', id: f.id, label: '删' })}
+    </div>`;
 }
 
 /** 第四层：Bug 追踪 */
@@ -520,7 +615,7 @@ export default {
           </div>
           ${计时区(ctx, 项目)}
           ${里程碑区(ctx, 项目)}
-          ${功能看板(ctx, 项目)}
+          ${功能区(ctx, 项目)}
           ${Bug追踪(ctx, 项目)}
           ${开发日志(ctx, 项目)}
           ${笔记(ctx, 项目)}
@@ -621,6 +716,22 @@ export default {
     // ---- 功能 ----
     'dev:选新功能里程碑': (el) => {
       ui_state.新功能里程碑 = el.value || null;
+    },
+    'dev:切换视图': (el, ctx, id) => {
+      ui_state.视图模式 = id === '列表' ? '列表' : '看板';
+      ctx.rerender();
+    },
+    'dev:列表分组': (el, ctx, id) => {
+      ui_state.列表分组 = id === '优先级' ? '优先级' : '里程碑';
+      ctx.rerender();
+    },
+    'dev:功能里程碑': (el, ctx, id) => {
+      const 所属里程碑 = el.value || null;
+      ctx.store.update((d) => updateFeature(d, id, { 所属里程碑 }));
+    },
+    'dev:功能状态': (el, ctx, id) => {
+      const 状态 = el.value;
+      ctx.store.update((d) => moveFeature(d, id, 状态, ctx.today));
     },
     'dev:加功能': (el, ctx, projectId) => {
       const text = String(el.value || '').trim();
