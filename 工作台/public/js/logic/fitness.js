@@ -1,7 +1,7 @@
 /** 健身计划的纯逻辑：星期模板、今日训练打卡、历史、单动作重量趋势 */
 
 import { newId, addFromModule } from './tasks.js';
-import { todayKey, weekdayShort } from '../dates.js';
+import { todayKey, weekdayShort, weekRange, inRange } from '../dates.js';
 
 export const WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日'];
 export const WEEKDAY_FULL = {
@@ -248,4 +248,21 @@ export function workoutToToday(data, today = todayKey()) {
   const 标题 = plan.有安排 ? `练：${plan.主题}` : '安排一次训练';
   const r = addFromModule(data, today, { 标题, 归属: 'fitness' });
   return { ok: true, task: r.task, 已存在: r.已存在 };
+}
+
+/**
+ * 打卡圆环要的数字：本周练了几次 / 目标几次。
+ * 百分比不封顶（练超了要看得出来），画环的时候再夹到 100。
+ */
+export function 打卡环(data, today = todayKey()) {
+  const { start, end } = weekRange(today);
+  const 次数 = (data.健身.打卡 || []).filter((k) => k.日期 && inRange(k.日期, start, end)).length;
+  const 目标 = Math.max(0, Math.round(Number((data.设置 || {}).每周训练目标) || 0));
+  return {
+    次数,
+    目标,
+    百分比: 目标 > 0 ? Math.round((次数 / 目标) * 100) : 0,
+    超额: 目标 > 0 && 次数 > 目标,
+    还差: Math.max(0, 目标 - 次数),
+  };
 }

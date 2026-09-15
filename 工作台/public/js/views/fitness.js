@@ -24,7 +24,10 @@ import {
   workoutVolume,
   workoutToToday,
   部位统计,
+  打卡环,
 } from '../logic/fitness.js';
+import * as timer from '../logic/timer.js';
+import { 圆环 } from '../logic/chart.js';
 
 const TABS = ['今日训练', '计划模板', '历史', '进度'];
 
@@ -51,6 +54,8 @@ const ui_state = {
   趋势动作: null,
   // 加动作时先选的部位（不写进数据文件，只是界面上的选择）
   新动作部位: '其他',
+  // 休息倒计时（只是界面状态，不写进数据文件；刷新页面会归零）
+  计时: null,
   提示: null,
   错误: null,
 };
@@ -59,8 +64,30 @@ export function resetViewState() {
   ui_state.标签 = '今日训练';
   ui_state.趋势动作 = null;
   ui_state.新动作部位 = '其他';
+  ui_state.计时 = null;
   ui_state.提示 = null;
   ui_state.错误 = null;
+}
+
+/** 懒初始化：默认是一个停着的 60 秒组间休息 */
+function 当前计时() {
+  if (!ui_state.计时) {
+    const p = timer.TIMER_PRESETS[0];
+    ui_state.计时 = timer.造计时(p.秒, p.名称);
+  }
+  return ui_state.计时;
+}
+
+/** 只改那几个文字节点，不整页重画（重画会把输入焦点抖掉） */
+function 画计时(display, 状态行, 开关) {
+  const t = 当前计时();
+  if (display) {
+    display.textContent = timer.格式化(timer.剩余秒(t));
+    display.classList.toggle('is-done', timer.到位了(t));
+    display.classList.toggle('is-paused', !t.运行中 && !timer.到位了(t));
+  }
+  if (状态行) 状态行.textContent = timer.状态话(t);
+  if (开关) 开关.textContent = t.运行中 ? '暂停' : timer.到位了(t) ? '再来一次' : '开始';
 }
 
 function 提示线() {
@@ -135,6 +162,60 @@ function 加动作条({ action, id = '', placeholder }) {
       ).join('')}
     </select>
     <span class="hint">在这里选好部位，加进去的动作就归到那个部位</span>
+  </div>`;
+}
+
+/** 打卡圆环 + 休息倒计时微组件，放在「今日训练」最上面 */
+function 打卡与计时(ctx) {
+  const 环 = 打卡环(ctx.data, ctx.today);
+  const t = 当前计时();
+  const plan = todayPlan(ctx.data, ctx.today);
+  const 中心 = 环.目标 > 0 ? `${环.次数}/${环.目标}` : `${环.次数}`;
+  const 副 =
+    环.目标 === 0 ? '本周已练（还没设目标）' : 环.超额 ? '本周已超目标' : `还差 ${环.还差} 次`;
+
+  return `
+  <div class="card">
+    <div class="card-head">
+      <h2 class="card-title">本周打卡</h2>
+      <span class="spacer"></span>
+      <span class="hint">${环.目标 > 0 ? `每周目标 ${环.目标} 次` : '每周目标在「数据与设置」里填'}</span>
+    </div>
+    <div class="card-body">
+      <div class="timer-box">
+        <div class="ring-box">
+          ${圆环({ 百分比: 环.百分比, 中心, 副 })}
+          ${
+            plan.已打卡
+              ? '<span class="hint" style="margin-top:6px">今天已打卡</span>'
+              : '<button type="button" class="btn btn-primary btn-sm" data-action="fitness:开始训练" style="margin-top:6px">今天打卡</button>'
+          }
+        </div>
+        <div>
+          <div class="timer-display${timer.到位了(t) ? ' is-done' : ''}${
+    !t.运行中 && !timer.到位了(t) ? ' is-paused' : ''
+  }" data-role="timer-display">${ui.escapeHtml(timer.格式化(timer.剩余秒(t)))}</div>
+          <div class="timer-state" data-role="timer-state">${ui.escapeHtml(timer.状态话(t))}</div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:6px">
+          <div style="display:flex; gap:6px; flex-wrap:wrap">
+            ${timer.TIMER_PRESETS.map(
+              (p) =>
+                `<button type="button" class="btn btn-sm" data-action="fitness:计时预设" data-id="${
+                  p.key
+                }">${ui.escapeHtml(p.名称)} ${timer.格式化(p.秒)}</button>`
+            ).join('')}
+          </div>
+          <div style="display:flex; gap:6px">
+            <button type="button" class="btn btn-primary btn-sm" data-action="fitness:计时开停" data-role="timer-toggle">${
+              t.运行中 ? '暂停' : timer.到位了(t) ? '再来一次' : '开始'
+            }</button>
+            <button type="button" class="btn btn-sm" data-action="fitness:计时重置">重置</button>
+          </div>
+        </div>
+      </div>
+      <p class="hint">倒计时只是这次打开页面时用，不入数据文件；刷新页面会回到 60 秒。</p>
+    </div>
   </div>`;
 }
 
@@ -399,7 +480,7 @@ export default {
       ${标签栏()}
       ${
         ui_state.标签 === '今日训练'
-          ? 今日训练(ctx)
+          ? 打卡与计时(ctx) + 今日训练(ctx)
           : ui_state.标签 === '计划模板'
           ? 计划模板(ctx)
           : ui_state.标签 === '历史'
@@ -409,8 +490,20 @@ export default {
     </div>`;
   },
 
-  mount() {
-    return () => {};
+  mount(root) {
+    // 每秒钟推进一格；只改文字节点，不整页重画
+    const display = root.querySelector('[data-role="timer-display"]');
+    const 状态行 = root.querySelector('[data-role="timer-state"]');
+    const 开关 = root.querySelector('[data-role="timer-toggle"]');
+    画计时(display, 状态行, 开关);
+
+    const 表 = setInterval(() => {
+      if (!ui_state.计时 || !ui_state.计时.运行中) return;
+      ui_state.计时 = timer.推进(ui_state.计时, 1);
+      画计时(display, 状态行, 开关);
+    }, 1000);
+
+    return () => clearInterval(表);
   },
 
   actions: {
@@ -450,6 +543,20 @@ export default {
     },
     'fitness:选新动作部位': (el, ctx) => {
       ui_state.新动作部位 = el.value || '其他';
+      ctx.rerender();
+    },
+    'fitness:计时预设': (el, ctx) => {
+      const p = timer.预设(el.dataset.id);
+      ui_state.计时 = timer.造计时(p.秒, p.名称);
+      ctx.rerender();
+    },
+    'fitness:计时开停': (el, ctx) => {
+      const t = 当前计时();
+      ui_state.计时 = t.运行中 ? timer.暂停(t) : timer.开始(t);
+      ctx.rerender();
+    },
+    'fitness:计时重置': (el, ctx) => {
+      ui_state.计时 = timer.重置(当前计时());
       ctx.rerender();
     },
     'fitness:加动作': (el, ctx, logId) => {

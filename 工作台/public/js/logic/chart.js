@@ -150,3 +150,26 @@ export function 柱状图(点, { 单位 = '', 标题 = '' } = {}) {
 export function 画图(类型, 点, 选项 = {}) {
   return 类型 === '柱状' ? 柱状图(点, 选项) : 折线图(点, 选项);
 }
+
+/**
+ * 完成度圆环（打卡环、进度环都用它）。
+ * 百分比超过 100 也只画满，不会绕出一圈来。
+ */
+export function 圆环({ 百分比 = 0, 大小 = 104, 粗细 = 9, 中心 = '', 副 = '' } = {}) {
+  const p = Math.max(0, Math.min(100, Number(百分比) || 0));
+  const 半径 = (大小 - 粗细) / 2;
+  const 周长 = 2 * Math.PI * 半径;
+  const 中心xy = 大小 / 2;
+
+  return `
+  <svg class="ring" viewBox="0 0 ${大小} ${大小}" role="img" aria-label="完成度 ${p}%">
+    <circle class="ring-track" cx="${中心xy}" cy="${中心xy}" r="${半径}" fill="none" stroke-width="${粗细}"/>
+    <circle class="ring-fill" cx="${中心xy}" cy="${中心xy}" r="${半径}" fill="none" stroke-width="${粗细}"
+      stroke-dasharray="${((周长 * p) / 100).toFixed(2)} ${周长.toFixed(2)}" stroke-linecap="round"
+      transform="rotate(-90 ${中心xy} ${中心xy})"/>
+    <text class="ring-center" x="${中心xy}" y="${中心xy}" text-anchor="middle" dominant-baseline="central">${转义(
+    中心
+  )}</text>
+  </svg>
+  ${副 ? `<div class="ring-sub">${转义(副)}</div>` : ''}`;
+}

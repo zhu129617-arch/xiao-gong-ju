@@ -633,6 +633,69 @@
   padding: 8px;
 }
 
+/* ---------- 完成度圆环 / 计时微组件 ---------- */
+
+.ring {
+  display: block;
+}
+
+.ring-track {
+  stroke: var(--line-1);
+}
+
+.ring-fill {
+  stroke: var(--accent);
+}
+
+.ring-center {
+  fill: var(--text-1);
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.ring-sub {
+  font-size: 11px;
+  color: var(--text-3);
+  text-align: center;
+  margin-top: 4px;
+}
+
+.ring-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: none;
+}
+
+.timer-box {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.timer-display {
+  font-size: 30px;
+  font-weight: 500;
+  line-height: 1.1;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+  min-width: 96px;
+}
+
+.timer-display.is-done {
+  color: var(--warn);
+}
+
+.timer-display.is-paused {
+  color: var(--text-3);
+}
+
+.timer-state {
+  font-size: 11px;
+  color: var(--text-3);
+}
+
 /* ---------- 手绘 SVG 图表（见 logic/chart.js）---------- */
 
 .chart {
