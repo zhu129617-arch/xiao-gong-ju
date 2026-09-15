@@ -14,6 +14,7 @@ import * as ui from './ui.js';
 import { todayKey } from './dates.js';
 import { viewFor } from './views/index.js';
 import { renderQuickCapture, submitQuick, targetOf, optionsFor } from './logic/quickcapture.js';
+import { renderDrawer, submitDrawer } from './logic/drawer.js';
 import { moduleOrder } from './logic/settings.js';
 
 const appRootEl = () => document.getElementById('app');
@@ -95,10 +96,13 @@ function shellHtml(hidden, order) {
       <div class="error-banner" id="error-banner"></div>
       <header class="topbar">
         <h1 class="page-title" id="page-title"></h1>
+        <span class="spacer"></span>
+        <button type="button" class="btn btn-sm" data-action="drawer:toggle" title="速记（Cmd/Ctrl + J）">速记</button>
         <span class="save-badge" id="save-badge"></span>
       </header>
       <div class="view-root" id="view-root"></div>
     </main>
+    <aside class="drawer" id="drawer" data-open="false" aria-label="速记"></aside>
   </div>`;
 }
 
@@ -120,7 +124,11 @@ function refreshShellIfNeeded() {
   if (sig === shellSig) return false;
   shellSig = sig;
   const root = appRootEl();
-  if (root) root.innerHTML = shellHtml(s.隐藏模块 || [], moduleOrder(store.get()));
+  if (root) {
+    root.innerHTML = shellHtml(s.隐藏模块 || [], moduleOrder(store.get()));
+    // 外壳重画会把抽屉一起带走，这里按当前开合状态补回去
+    applyDrawer();
+  }
   return true;
 }
 
@@ -161,6 +169,10 @@ function dispatchAction(action, el, ctx) {
   }
   if (action.startsWith('quick:') || action === 'overlay:close') {
     handleQuickAction(action, el);
+    return;
+  }
+  if (action.startsWith('drawer:')) {
+    handleDrawerAction(action, el);
     return;
   }
   const view = viewFor(currentKey);
@@ -262,6 +274,85 @@ function showToast(text) {
   toastTimer = setTimeout(() => el.classList.remove('is-visible'), 2200);
 }
 
+// ---------- 侧边速记抽屉 ----------
+//
+// 抽屉挂在外壳里（不在视图区域），所以切页面、改数据都不会把它冲掉。
+// 它只做纯 DOM 操作，绝不整页刷新。
+
+const drawerState = { open: false, target: 'idea', text: '' };
+
+function drawerEl() {
+  return document.getElementById('drawer');
+}
+
+/** 把当前打开状态和内容画进抽屉；关着的时候也画，滑出动画才有内容可看 */
+export function applyDrawer() {
+  const el = drawerEl();
+  if (!el) return;
+  // 先把已经打进去的字收回来，再重画，免得切去处时丢了
+  const 输入框 = el.querySelector('[data-role="drawer-text"]');
+  if (输入框 && drawerState.open) drawerState.text = 输入框.value;
+
+  el.dataset.open = String(drawerState.open);
+  el.setAttribute('aria-hidden', String(!drawerState.open));
+  el.innerHTML = renderDrawer(store.get(), { ...drawerState, today: todayKey() });
+
+  if (drawerState.open) {
+    const t = el.querySelector('[data-role="drawer-text"]');
+    if (t) {
+      t.focus();
+      t.setSelectionRange(t.value.length, t.value.length);
+    }
+  }
+}
+
+function toggleDrawer(开关) {
+  drawerState.open = 开关 === undefined ? !drawerState.open : !!开关;
+  if (!drawerState.open) drawerState.text = '';
+  applyDrawer();
+}
+
+function handleDrawerAction(action, el) {
+  const el2 = drawerEl();
+  const 取错误行 = () => (el2 ? el2.querySelector('[data-role="drawer-error"]') : null);
+
+  if (action === 'drawer:toggle') {
+    toggleDrawer();
+    return;
+  }
+  if (action === 'drawer:close') {
+    toggleDrawer(false);
+    return;
+  }
+  if (action === 'drawer:target') {
+    const 输入框 = el2 ? el2.querySelector('[data-role="drawer-text"]') : null;
+    if (输入框) drawerState.text = 输入框.value;
+    drawerState.target = el.dataset.id || 'idea';
+    applyDrawer();
+    return;
+  }
+  if (action === 'drawer:submit') {
+    const 输入框 = el2 ? el2.querySelector('[data-role="drawer-text"]') : null;
+    if (输入框) drawerState.text = 输入框.value;
+
+    let result = null;
+    store.update((d) => {
+      result = submitDrawer(d, { ...drawerState, today: todayKey() });
+    });
+
+    if (!result || !result.ok) {
+      const 行 = 取错误行();
+      if (行) 行.textContent = (result && result.error) || '存不下';
+      return;
+    }
+    // 存完就收起来，整页不刷新（store 那边写盘成功后另有「已保存」提示）
+    drawerState.open = false;
+    drawerState.text = '';
+    applyDrawer();
+    showToast(`已存到${result.去处}`);
+  }
+}
+
 function resetDeleteTimer(el) {
   if (el._resetTimer) clearTimeout(el._resetTimer);
   el._resetTimer = setTimeout(() => {
@@ -295,6 +386,19 @@ function onDocumentKeydown(event) {
     else openQuickCapture();
     return;
   }
+  // Cmd/Ctrl + J：随时把速记抽屉叫出来
+  if ((event.metaKey || event.ctrlKey) && String(event.key).toLowerCase() === 'j') {
+    event.preventDefault();
+    if (overlayRootEl() && overlayRootEl().firstChild) closeOverlay();
+    toggleDrawer();
+    return;
+  }
+  // 在抽屉里 Cmd/Ctrl + Enter 直接存下
+  if ((event.metaKey || event.ctrlKey) && event.key === 'Enter' && drawerState.open) {
+    event.preventDefault();
+    handleDrawerAction('drawer:submit', {});
+    return;
+  }
   if (event.key === 'Escape') {
     const active = document.activeElement;
     if (active && active.classList && active.classList.contains('inline-field')) {
@@ -302,6 +406,7 @@ function onDocumentKeydown(event) {
       active.blur();
     }
     if (overlayRootEl() && overlayRootEl().firstChild) closeOverlay();
+    if (drawerState.open) toggleDrawer(false);
     return;
   }
   if (event.key === 'Enter') {
@@ -408,6 +513,7 @@ async function boot() {
 
   appRootEl().innerHTML = shellHtml(store.get().设置.隐藏模块 || [], moduleOrder(store.get()));
   shellSig = JSON.stringify([store.get().设置.隐藏模块 || [], store.get().设置.模块顺序 || []]);
+  applyDrawer();
 
   router = createRouter({
     getHash: () => location.hash,
