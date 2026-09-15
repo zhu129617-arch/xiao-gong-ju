@@ -9,6 +9,10 @@
 ## 已实测的环境事实（不要重复排查）
 
 - Node：`/usr/local/bin/node` = v24.20.0；WorkBuddy 自带 `~/.workbuddy/binaries/node/versions/22.22.2/bin/node` = v22.22.2。注意 `which node` 解析到的是 WorkBuddy 那个，启动脚本要按顺序探测两个位置。
+- **Git**：2026-09-15 17:20 装好。`/usr/bin/git` = **git 2.50.1 (Apple Git-155)**，来自 Apple 官方命令行工具（`/Library/Developer/CommandLineTools` 已就位）。**这台机器没有 Homebrew**，`/opt/homebrew` 不存在。
+  - 装上之前的坑：`/usr/bin/git` 在没装 CLT 时只是个**占位入口**——`which git` 找得到它，但一执行就报 `xcode-select: No developer tools were found`。**判断工具是否可用必须实际执行，不能只看 which / ls。**
+  - 安装方式：`xcode-select --install` 弹系统窗，**必须用户亲自点**（agent 的沙箱里点不了，`sudo` 也被禁）。备用：用户在终端跑 `sudo softwareupdate -i "Command Line Tools for Xcode 26.6"`。
+- **沙箱限制**：本机工具沙箱里 `sudo` / `ps` 被拒（operation not permitted），窗口列表、Accessibility 自动化也都读不到。Chrome 无头模式起不来（已验证 4 种参数组合）。
 - 端口：41873 为主（备用 41874–41876），实测均空闲。
 - 技术栈锁定：**零 npm 依赖**，纯 Node 内置模块 + 原生 HTML/CSS/ES Module，无构建步骤、无 node_modules、不用 localStorage。
 
@@ -32,9 +36,15 @@
 **回归命令**
 ```bash
 cd 工作台
-node --test 'tests/**/*.test.js'   # 359 项功能测试
+node --test 'tests/**/*.test.js'   # 389 项功能测试
 node server/selftest.js            # 9 项数据层自检
 ```
+
+**版本控制（2026-09-15 起）**
+- 仓库根 = `/Users/zhu/WorkBuddy/小工具`，分支 `main`，首次提交 `54e5881`（64 个文件 / 16251 行）。
+- **`工作台/data/` 故意不入库**——那是小蝶每天在用的实时个人数据，程序自带 `data.json.bak` + 快照 + 导入前备份三套机制。**别"好心"把它加进去**；她若明确要版本化数据，再改 `.gitignore`。
+- 身份用的是**仓库级** `user.name=小蝶` / `user.email=xiaodie@localhost`（她机器上没有全局配置，我没动全局）。要改全局她得自己跑 `git config --global ...`。
+- 已设 `core.quotepath=false`（项目全是中文文件名，不设的话 git 会输出八进制转义，没法看）。
 
 **实现要点（改动前先看这里）**
 - 分层：`public/js/logic/*.js` 纯逻辑（Node 可直接测）／`views/*.js` 只返回 HTML 字符串 + 导出 `actions`／`app.js` 事件委托分发 `data-action`。
