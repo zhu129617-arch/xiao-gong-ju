@@ -102,27 +102,32 @@ describe('健身逻辑（logic/fitness.js）', () => {
   test('打卡里加动作、改动作、删动作', () => {
     const d = richData();
     const logId = 'k1';
+    const 原数量 = fit.findWorkout(d, logId).动作.length;
 
     assert.equal(fit.addWorkoutExercise(d, logId, { 动作: '  ' }).ok, false);
     const r = fit.addWorkoutExercise(d, logId, { 动作: '腿举', 组数: 3, 次数: 12, 重量: 80 });
     assert.equal(r.ok, true);
-    assert.equal(fit.findWorkout(d, logId).动作.length, 2);
+    assert.equal(fit.findWorkout(d, logId).动作.length, 原数量 + 1);
 
-    fit.updateWorkoutExercise(d, logId, 1, { 组数: '5', 次数: '10', 重量: '85' });
-    const 改后 = fit.findWorkout(d, logId).动作[1];
+    // 用「找到刚加的那条」而不是写死下标，免得 fixture 一变就红
+    const i = fit.findWorkout(d, logId).动作.findIndex((a) => a.动作 === '腿举');
+    assert.ok(i >= 0);
+
+    fit.updateWorkoutExercise(d, logId, i, { 组数: '5', 次数: '10', 重量: '85' });
+    const 改后 = fit.findWorkout(d, logId).动作[i];
     assert.equal(改后.组数, 5);
     assert.equal(改后.次数, 10);
     assert.equal(改后.重量, 85);
 
     // 非法的组数/次数保持原值，重量非法兜成 0
-    fit.updateWorkoutExercise(d, logId, 1, { 组数: 'abc', 次数: '0' });
-    assert.equal(fit.findWorkout(d, logId).动作[1].组数, 5);
-    assert.equal(fit.findWorkout(d, logId).动作[1].次数, 10);
-    fit.updateWorkoutExercise(d, logId, 1, { 重量: '-3' });
-    assert.equal(fit.findWorkout(d, logId).动作[1].重量, 0);
+    fit.updateWorkoutExercise(d, logId, i, { 组数: 'abc', 次数: '0' });
+    assert.equal(fit.findWorkout(d, logId).动作[i].组数, 5);
+    assert.equal(fit.findWorkout(d, logId).动作[i].次数, 10);
+    fit.updateWorkoutExercise(d, logId, i, { 重量: '-3' });
+    assert.equal(fit.findWorkout(d, logId).动作[i].重量, 0);
 
-    assert.equal(fit.removeWorkoutExercise(d, logId, 1), true);
-    assert.equal(fit.findWorkout(d, logId).动作.length, 1);
+    assert.equal(fit.removeWorkoutExercise(d, logId, i), true);
+    assert.equal(fit.findWorkout(d, logId).动作.length, 原数量);
     assert.equal(fit.removeWorkoutExercise(d, logId, 9), false);
   });
 

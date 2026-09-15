@@ -14,6 +14,15 @@ export const WEEKDAY_FULL = {
   日: '周日',
 };
 
+/** 锻炼部位（PRD §5.6）。瑜伽/塑形这类不好归类的一律走「其他」。 */
+export const BODY_PARTS = ['胸', '背', '腿', '核心', '其他'];
+
+/** 认不出的部位名一律归到「其他」，不让它变成第四种野值 */
+export function 归一部位(v) {
+  const s = String(v || '').trim();
+  return BODY_PARTS.includes(s) ? s : '其他';
+}
+
 export function emptySection(data) {
   return Object.keys(data.健身.计划模板 || {}).length === 0 && (data.健身.打卡 || []).length === 0;
 }
@@ -47,7 +56,7 @@ export function clearDay(data, 星期) {
   return true;
 }
 
-export function addTemplateExercise(data, 星期, { 动作, 目标组数 = 3, 目标次数 = 10 } = {}) {
+export function addTemplateExercise(data, 星期, { 动作, 部位, 目标组数 = 3, 目标次数 = 10 } = {}) {
   const 名 = String(动作 || '').trim();
   if (!名) return { ok: false, error: '动作名不能为空' };
   const t = ensureTemplate(data);
@@ -55,6 +64,7 @@ export function addTemplateExercise(data, 星期, { 动作, 目标组数 = 3, �
   if (!Array.isArray(t[星期].动作)) t[星期].动作 = [];
   const item = {
     动作: 名,
+    部位: 归一部位(部位),
     目标组数: Math.max(1, Math.round(Number(目标组数) || 3)),
     目标次数: Math.max(1, Math.round(Number(目标次数) || 10)),
   };
@@ -106,6 +116,7 @@ export function makeWorkout(主题, dateKey, 动作 = []) {
     主题: String(主题 || '').trim() || '训练',
     动作: 动作.map((a) => ({
       动作: String(a.动作 || '').trim(),
+      部位: 归一部位(a.部位),
       组数: Math.max(1, Math.round(Number(a.组数) || Number(a.目标组数) || 3)),
       次数: Math.max(1, Math.round(Number(a.次数) || Number(a.目标次数) || 10)),
       重量: Number.isFinite(Number(a.重量)) ? Number(a.重量) : 0,
@@ -136,13 +147,14 @@ export function startEmptyWorkout(data, 主题, today = todayKey()) {
   return { ok: true, log };
 }
 
-export function addWorkoutExercise(data, logId, { 动作, 组数 = 3, 次数 = 10, 重量 = 0 } = {}) {
+export function addWorkoutExercise(data, logId, { 动作, 部位, 组数 = 3, 次数 = 10, 重量 = 0 } = {}) {
   const log = findWorkout(data, logId);
   if (!log) return { ok: false, error: '找不到这次训练' };
   const 名 = String(动作 || '').trim();
   if (!名) return { ok: false, error: '动作名不能为空' };
   const item = {
     动作: 名,
+    部位: 归一部位(部位),
     组数: Math.max(1, Math.round(Number(组数) || 3)),
     次数: Math.max(1, Math.round(Number(次数) || 10)),
     重量: Number.isFinite(Number(重量)) ? Number(重量) : 0,
@@ -158,6 +170,7 @@ export function updateWorkoutExercise(data, logId, index, patch = {}) {
   const item = list[index];
   if (!item) return null;
   if ('动作' in patch && String(patch.动作).trim()) item.动作 = String(patch.动作).trim();
+  if ('部位' in patch) item.部位 = 归一部位(patch.部位);
   for (const key of ['组数', '次数']) {
     if (key in patch) {
       const n = Number(patch[key]);
@@ -169,6 +182,29 @@ export function updateWorkoutExercise(data, logId, index, patch = {}) {
     item.重量 = Number.isFinite(n) && n >= 0 ? n : 0;
   }
   return item;
+}
+
+/**
+ * 按部位统计练了多少：动作条数、总组数、涉及几天。
+ * 从/到 都闭区间（'YYYY-MM-DD'），都不传就是全部历史。
+ */
+export function 部位统计(data, { 从 = null, 到 = null } = {}) {
+  const 表 = new Map(BODY_PARTS.map((p) => [p, { 部位: p, 动作数: 0, 总组数: 0, 日期: new Set() }]));
+  for (const log of data.健身.打卡 || []) {
+    const 日 = String(log.日期 || '');
+    if (从 && 日 < 从) continue;
+    if (到 && 日 > 到) continue;
+    for (const a of log.动作 || []) {
+      const 项 = 表.get(归一部位(a.部位));
+      项.动作数 += 1;
+      项.总组数 += Number(a.组数) || 0;
+      项.日期.add(日);
+    }
+  }
+  return BODY_PARTS.map((p) => {
+    const x = 表.get(p);
+    return { 部位: p, 动作数: x.动作数, 总组数: x.总组数, 天数: x.日期.size };
+  });
 }
 
 export function removeWorkoutExercise(data, logId, index) {

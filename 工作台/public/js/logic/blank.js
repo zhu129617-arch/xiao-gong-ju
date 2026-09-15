@@ -117,5 +117,27 @@ export function 迁移数据(data) {
   if (!data || typeof data !== 'object') return data;
   迁移开发数据(data.开发);
   迁移自媒体数据(data.自媒体);
+  迁移健身数据(data.健身);
   return data;
+}
+
+const 部位清单 = ['胸', '背', '腿', '核心', '其他'];
+const 归一部位 = (v) => (部位清单.includes(String(v || '').trim()) ? String(v).trim() : '其他');
+
+/**
+ * 给健身的动作补上「部位」。第一版没有这个字段，不补的话
+ * 老记录会全部落不到任何一个部位上，按部位统计就是空的。
+ */
+export function 迁移健身数据(健身) {
+  if (!健身 || typeof 健身 !== 'object') return 健身;
+  const 模板 = 健身.计划模板;
+  if (模板 && typeof 模板 === 'object') {
+    for (const tpl of Object.values(模板)) {
+      for (const a of (tpl && tpl.动作) || []) a.部位 = 归一部位(a.部位);
+    }
+  }
+  for (const log of Array.isArray(健身.打卡) ? 健身.打卡 : []) {
+    for (const a of log.动作 || []) a.部位 = 归一部位(a.部位);
+  }
+  return 健身;
 }

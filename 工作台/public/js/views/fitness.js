@@ -4,6 +4,8 @@ import { fitnessSummary, exerciseTrend, exerciseNames } from '../logic/summary.j
 import {
   WEEKDAYS,
   WEEKDAY_FULL,
+  BODY_PARTS,
+  归一部位,
   emptySection,
   getTemplate,
   setTheme,
@@ -21,13 +23,34 @@ import {
   workoutsSorted,
   workoutVolume,
   workoutToToday,
+  部位统计,
 } from '../logic/fitness.js';
 
 const TABS = ['今日训练', '计划模板', '历史', '进度'];
 
+const 部位色 = { 胸: 'tag-pink', 背: 'tag-blue', 腿: 'tag-teal', 核心: 'tag-amber', 其他: 'tag-gray' };
+
+function 部位标签(部位) {
+  const p = 归一部位(部位);
+  return `<span class="tag ${部位色[p]}">${ui.escapeHtml(p)}</span>`;
+}
+
+/** 选部位的下来框；data-field="部位" 复用「改动作」那个动作 */
+function 部位选择(当前值, { logId = '', index = null, action = 'fitness:改动作' } = {}) {
+  return `<select class="field-input" data-action="${action}" data-id="${ui.escapeHtml(
+    logId
+  )}"${index === null ? '' : ` data-index="${index}"`} data-field="部位">
+    ${BODY_PARTS.map(
+      (p) => `<option value="${p}"${归一部位(当前值) === p ? ' selected' : ''}>${p}</option>`
+    ).join('')}
+  </select>`;
+}
+
 const ui_state = {
   标签: '今日训练',
   趋势动作: null,
+  // 加动作时先选的部位（不写进数据文件，只是界面上的选择）
+  新动作部位: '其他',
   提示: null,
   错误: null,
 };
@@ -35,6 +58,7 @@ const ui_state = {
 export function resetViewState() {
   ui_state.标签 = '今日训练';
   ui_state.趋势动作 = null;
+  ui_state.新动作部位 = '其他';
   ui_state.提示 = null;
   ui_state.错误 = null;
 }
@@ -72,6 +96,7 @@ function 动作行(logId, a, index, 可改) {
   if (!可改) {
     return `
     <div class="list-row">
+      ${部位标签(a.部位)}
       <span class="grow ellipsis">${ui.escapeHtml(a.动作)}</span>
       <span class="hint">${a.组数} 组 × ${a.次数} 次</span>
       <span class="hint${Number(a.重量) > 0 ? '' : ' is-danger'}">${Number(a.重量) > 0 ? a.重量 + ' kg' : '没填重量'}</span>
@@ -79,6 +104,7 @@ function 动作行(logId, a, index, 可改) {
   }
   return `
   <div class="list-row">
+    ${部位选择(a.部位, { logId, index })}
     <span class="grow ellipsis">${ui.escapeHtml(a.动作)}</span>
     <input type="text" class="field-input" style="width:56px" data-action="fitness:改动作" data-id="${ui.escapeHtml(
       logId
@@ -95,6 +121,20 @@ function 动作行(logId, a, index, 可改) {
     <button type="button" class="btn btn-sm" data-action="fitness:删动作" data-id="${ui.escapeHtml(
       logId
     )}" data-index="${index}">删</button>
+  </div>`;
+}
+
+/** 「加一个动作」那一行：先选部位，再打字，回车存下 */
+function 加动作条({ action, id = '', placeholder }) {
+  return `
+  <div class="toolbar">
+    ${ui.inlineInput({ action, id, placeholder })}
+    <select class="field-input" data-action="fitness:选新动作部位">
+      ${BODY_PARTS.map(
+        (p) => `<option value="${p}"${ui_state.新动作部位 === p ? ' selected' : ''}>${p}</option>`
+      ).join('')}
+    </select>
+    <span class="hint">在这里选好部位，加进去的动作就归到那个部位</span>
   </div>`;
 }
 
@@ -119,8 +159,8 @@ function 今日训练(ctx) {
               : log.动作.map((a, i) => 动作行(log.id, a, i, true)).join('')
           }
         </div>
-        <div class="toolbar" style="margin-top:10px">
-          ${ui.inlineInput({ action: 'fitness:加动作', id: log.id, placeholder: '再加一个动作，回车保存' })}
+        <div style="margin-top:10px">
+          ${加动作条({ action: 'fitness:加动作', id: log.id, placeholder: '再加一个动作，回车保存' })}
         </div>
         <div class="toolbar">
           <span class="hint">备注</span>
@@ -148,6 +188,7 @@ function 今日训练(ctx) {
               .map(
                 (a) => `
         <div class="list-row">
+          ${部位标签(a.部位)}
           <span class="grow ellipsis">${ui.escapeHtml(a.动作)}</span>
           <span class="hint">目标 ${a.目标组数} 组 × ${a.目标次数} 次</span>
         </div>`
@@ -203,6 +244,7 @@ function 计划模板(ctx) {
                       .map(
                         (a, i) => `
               <div class="list-row">
+                ${部位标签(a.部位)}
                 <span class="grow ellipsis">${ui.escapeHtml(a.动作)}</span>
                 <span class="hint">目标 ${a.目标组数} 组 × ${a.目标次数} 次</span>
                 <button type="button" class="btn btn-sm" data-action="fitness:删模板动作" data-id="${w}" data-index="${i}">删</button>
@@ -210,8 +252,8 @@ function 计划模板(ctx) {
                       )
                       .join('')
               }</div>
-          <div class="toolbar" style="margin-top:10px">
-            ${ui.inlineInput({ action: 'fitness:加模板动作', id: w, placeholder: '加一个动作，回车保存' })}
+          <div style="margin-top:10px">
+            ${加动作条({ action: 'fitness:加模板动作', id: w, placeholder: '加一个动作，回车保存' })}
           </div>`
             : ''
         }
@@ -253,21 +295,55 @@ function 历史(ctx) {
     .join('');
 }
 
+/** 各部位练了多少：动作条数 / 总组数 / 涉及几天 */
+function 部位分布(ctx) {
+  const 部位们 = 部位统计(ctx.data);
+  const 最多 = Math.max(1, ...部位们.map((p) => p.动作数));
+  const 练过的 = 部位们.filter((p) => p.动作数 > 0);
+
+  return `
+  ${ui.sectionTitle('各部位练了多少', '<span class="hint">按动作条数算</span>')}
+  <div class="card">
+    <div class="card-body">
+      ${
+        练过的.length === 0
+          ? '<p class="hint">还没有带部位的训练记录。打卡时选一下部位，这里就有数了。</p>'
+          : 部位们
+              .map(
+                (p) => `
+      <div style="margin-bottom:8px">
+        <div class="hint">${部位标签(p.部位)} ${p.动作数} 个动作 · ${p.总组数} 组 · ${p.天数} 天</div>
+        <div class="progress-mini" style="height:8px"><span style="width:${Math.round(
+          (p.动作数 / 最多) * 100
+        )}%"></span></div>
+      </div>`
+              )
+              .join('')
+      }
+    </div>
+  </div>`;
+}
+
 function 进度(ctx) {
   const 名字们 = exerciseNames(ctx.data);
+  const 分布 = 部位分布(ctx);
+
   if (名字们.length === 0) {
-    return ui.emptyState({
+    return `
+    ${分布}
+    ${ui.emptyState({
       title: '还没有可以看趋势的动作',
       text: '打过卡、或者排过计划之后，就能看到某个动作的重量变化。',
       actionLabel: '去今日训练',
       action: 'fitness:去今日训练',
-    });
+    })}`;
   }
   const 选中 = 名字们.includes(ui_state.趋势动作) ? ui_state.趋势动作 : 名字们[0];
   const 数据 = exerciseTrend(ctx.data, 选中);
   const 最大 = 数据.reduce((m, p) => Math.max(m, p.重量), 0) || 1;
 
   return `
+  ${分布}
   <div class="toolbar">
     <span class="hint">看哪个动作</span>
     <select class="field-input" data-action="fitness:选趋势动作">
@@ -372,12 +448,16 @@ export default {
       }
       ctx.rerender();
     },
+    'fitness:选新动作部位': (el, ctx) => {
+      ui_state.新动作部位 = el.value || '其他';
+      ctx.rerender();
+    },
     'fitness:加动作': (el, ctx, logId) => {
       const 动作 = String(el.value || '').trim();
       if (!动作) return;
       let r = null;
       ctx.store.update((d) => {
-        r = addWorkoutExercise(d, logId, { 动作 });
+        r = addWorkoutExercise(d, logId, { 动作, 部位: ui_state.新动作部位 });
       });
       if (!r || !r.ok) {
         ui_state.错误 = (r && r.error) || '加不上';
@@ -424,7 +504,7 @@ export default {
       if (!动作) return;
       let r = null;
       ctx.store.update((d) => {
-        r = addTemplateExercise(d, 星期, { 动作 });
+        r = addTemplateExercise(d, 星期, { 动作, 部位: ui_state.新动作部位 });
       });
       if (!r || !r.ok) {
         ui_state.错误 = (r && r.error) || '加不上';

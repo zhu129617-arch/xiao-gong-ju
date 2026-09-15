@@ -128,11 +128,14 @@ describe('健身页面（views/fitness.js）', () => {
     resetFit();
     const d = richData();
     const ctx = ctxOf(d, 'fitness');
-    act(fitnessView, 'fitness:加动作', ctx, { id: 'k1', value: '腿弯举' });
-    assert.equal(findWorkout(d, 'k1').动作.length, 2);
+    const 原数量 = findWorkout(d, 'k1').动作.length;
 
-    act(fitnessView, 'fitness:删动作', ctx, { id: 'k1', dataset: { index: '1' } });
-    assert.equal(findWorkout(d, 'k1').动作.length, 1);
+    act(fitnessView, 'fitness:加动作', ctx, { id: 'k1', value: '腿弯举' });
+    assert.equal(findWorkout(d, 'k1').动作.length, 原数量 + 1);
+    assert.equal(findWorkout(d, 'k1').动作.at(-1).动作, '腿弯举');
+
+    act(fitnessView, 'fitness:删动作', ctx, { id: 'k1', dataset: { index: String(原数量) } });
+    assert.equal(findWorkout(d, 'k1').动作.length, 原数量);
 
     act(fitnessView, 'fitness:备注', ctx, { id: 'k1', value: '还行' });
     assert.equal(findWorkout(d, 'k1').备注, '还行');
