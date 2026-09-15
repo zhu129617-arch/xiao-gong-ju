@@ -16,6 +16,7 @@ import { viewFor } from './views/index.js';
 import { renderQuickCapture, submitQuick, targetOf, optionsFor } from './logic/quickcapture.js';
 import { renderDrawer, submitDrawer } from './logic/drawer.js';
 import { moduleOrder } from './logic/settings.js';
+import { 装上光泽 } from './specular.js';
 
 const appRootEl = () => document.getElementById('app');
 const overlayRootEl = () => document.getElementById('overlay-root');
@@ -142,6 +143,10 @@ function renderView(key) {
   document.title = view.title === '首页总览' ? '工作台' : `${view.title} · 工作台`;
   const titleEl = document.getElementById('page-title');
   if (titleEl) titleEl.textContent = view.title;
+
+  // 让内容区跟着当前模块换点缀色（纯外观；样式表里按 data-module 取色）
+  const contentEl = document.querySelector('.content');
+  if (contentEl) contentEl.dataset.module = key;
 
   if (cleanup) {
     try {
@@ -533,6 +538,9 @@ async function boot() {
   document.addEventListener('click', onDocumentClick);
   document.addEventListener('keydown', onDocumentKeydown);
   document.addEventListener('change', onDocumentChange);
+
+  // 玻璃表面的漫反射光泽（纯装饰，只在真有鼠标的环境里生效）
+  装上光泽();
 
   // 页面被切走/关闭前把没写完的改动落盘，缩小丢数据的时间窗口
   document.addEventListener('visibilitychange', () => {

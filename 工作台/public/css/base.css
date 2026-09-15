@@ -1,52 +1,135 @@
-/* 基础：变量、排版、布局骨架 */
+/* ============================================================================
+   基础层：设计令牌、排版、骨架布局
+
+   设计语言：北欧极简 · 静奢工坊
+   - 材质：多层液态玻璃（骨瓷白半透明 + 高阶模糊 + 边缘高光 + 双层柔漫反射）
+   - 注意：这里只借用玻璃的「光学质感」，不含任何具象天气元素
+   - 栅格：所有 padding / margin / gap 走 8px 模数
+   - 圆角：Apple Squircle 连续曲率，卡片统一 16px
+
+   类名一个都没改，只改视觉。
+   ============================================================================ */
 
 :root {
-  --bg-page: #f7f7f5;
+  /* ---------- 色彩：暖燕麦灰基底 ---------- */
+  --bg-page: #f4f3ef; /* 未漂白棉纸 */
   --bg-surface: #ffffff;
-  --bg-soft: #f1efE8;
-  --bg-soft-2: #f4f4f2;
+  --bg-soft: #efede7;
+  --bg-soft-2: #f0eee8;
 
-  --text-1: #2c2c2a;
-  --text-2: #5f5e5a;
-  --text-3: #888780;
+  /* ---------- 中性文本层级 ---------- */
+  --text-1: #1c1e21; /* 黑炭 · 主标题 */
+  --text-2: #383d42; /* 石墨 · 次级标题 */
+  --text-3: #656b73; /* 冷岩灰 · 正文 */
+  --text-4: #9fa4ac; /* 雾面银 · 元信息 */
 
-  --line-1: rgba(0, 0, 0, 0.1);
-  --line-2: rgba(0, 0, 0, 0.2);
+  /* ---------- 分割线：不用硬描边，一律走渐变微光 ---------- */
+  --hairline: rgba(28, 30, 33, 0.07);
+  --hairline-strong: rgba(28, 30, 33, 0.12);
+  --divider: linear-gradient(90deg, transparent, rgba(28, 30, 33, 0.07), transparent);
+  --divider-strong: linear-gradient(90deg, transparent, rgba(28, 30, 33, 0.12), transparent);
 
-  --accent: #378add;
-  --accent-ink: #0c447c;
+  /* 兼容旧名字：老组件里写的是 --line-1 / --line-2 */
+  --line-1: var(--hairline);
+  --line-2: var(--hairline-strong);
 
-  --danger: #a32d2d;
-  --danger-bg: #fcebeb;
-  --danger-line: #f09595;
-  --warn: #854f0b;
-  --warn-bg: #faeeda;
-  --warn-line: #ef9f27;
+  /* ---------- 液态玻璃材质 ---------- */
+  --glass-bg: rgba(250, 249, 246, 0.75);
+  --glass-bg-strong: rgba(252, 251, 248, 0.86); /* 浮层用，更实一点 */
+  --glass-blur: blur(24px) saturate(160%);
+  --glass-edge: 1px solid rgba(255, 255, 255, 0.45); /* 迎光边 */
+  --glass-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.03),
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.6), 0 8px 24px -4px rgba(35, 31, 32, 0.04),
+    0 2px 6px -1px rgba(35, 31, 32, 0.02);
+  --glass-shadow-hover: inset 0 0 0 1px rgba(0, 0, 0, 0.04),
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.7), 0 14px 32px -6px rgba(35, 31, 32, 0.07),
+    0 4px 10px -2px rgba(35, 31, 32, 0.03);
+  /* 沉在玻璃下面的浅槽（看板列、条带这种「凹」进去的区域） */
+  --well-bg: rgba(28, 30, 33, 0.028);
+  --well-shadow: inset 0 1px 2px rgba(35, 31, 32, 0.05),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.5);
 
-  --blue-bg: #e6f1fb;
-  --blue-ink: #185fa5;
-  --blue-line: #b5d4f4;
-  --purple-bg: #eeedfe;
-  --purple-ink: #534ab7;
-  --purple-line: #cecbf6;
-  --amber-bg: #faeeda;
-  --amber-ink: #854f0b;
-  --amber-line: #fac775;
-  --teal-bg: #e1f5ee;
-  --teal-ink: #0f6e56;
-  --teal-line: #9fe1cb;
-  --pink-bg: #fbeaf0;
-  --pink-ink: #993556;
-  --pink-line: #f4c0d1;
-  --gray-bg: #f1efe8;
-  --gray-ink: #5f5e5a;
-  --gray-line: #d3d1c7;
+  /* ---------- 模块点缀色 ---------- */
+  --cobalt: #2e5b88; /* 开发工作 · 普鲁士深钴蓝 */
+  --clay: #d96b43; /* 自媒体 · 复古陶土赭红 */
+  --sage: #4a7c59; /* 生活 / 健身 · 鼠尾草灰绿 */
+  --ochre: #9a6b2f; /* 咨询 · 陶土系偏土黄 */
+  --rose: #a2596f; /* 饮食 · 陶土系偏玫 */
+  --slate: #6b7079; /* 游戏 / 中性 */
 
-  --radius: 12px;
-  --radius-sm: 8px;
+  --cobalt-tint: rgba(46, 91, 136, 0.09);
+  --clay-tint: rgba(217, 107, 67, 0.1);
+  --sage-tint: rgba(74, 124, 89, 0.1);
+  --ochre-tint: rgba(154, 107, 47, 0.11);
+  --rose-tint: rgba(162, 89, 111, 0.1);
+  --slate-tint: rgba(107, 112, 121, 0.1);
 
-  --font: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB',
-    'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+  --cobalt-line: rgba(46, 91, 136, 0.22);
+  --clay-line: rgba(217, 107, 67, 0.24);
+  --sage-line: rgba(74, 124, 89, 0.24);
+  --ochre-line: rgba(154, 107, 47, 0.26);
+  --rose-line: rgba(162, 89, 111, 0.24);
+  --slate-line: rgba(107, 112, 121, 0.22);
+
+  /* 兼容旧名字：--blue-* 那一套老组件还在用，指到新色板即可换掉观感 */
+  --blue-bg: var(--clay-tint);
+  --blue-ink: var(--clay);
+  --blue-line: var(--clay-line);
+  --purple-bg: var(--cobalt-tint);
+  --purple-ink: var(--cobalt);
+  --purple-line: var(--cobalt-line);
+  --amber-bg: var(--ochre-tint);
+  --amber-ink: var(--ochre);
+  --amber-line: var(--ochre-line);
+  --teal-bg: var(--sage-tint);
+  --teal-ink: var(--sage);
+  --teal-line: var(--sage-line);
+  --pink-bg: var(--rose-tint);
+  --pink-ink: var(--rose);
+  --pink-line: var(--rose-line);
+  --gray-bg: var(--slate-tint);
+  --gray-ink: var(--slate);
+  --gray-line: var(--slate-line);
+
+  /* 全局强调色：跟着当前模块走，默认钴蓝 */
+  --accent: var(--cobalt);
+  --accent-tint: var(--cobalt-tint);
+  --accent-line: var(--cobalt-line);
+  --accent-ink: #1d3f5f;
+
+  /* ---------- 语义色（危险 / 提醒）---------- */
+  --danger: #a33a35;
+  --danger-bg: rgba(163, 58, 53, 0.09);
+  --danger-line: rgba(163, 58, 53, 0.28);
+  --warn: #8a6321;
+  --warn-bg: rgba(154, 107, 47, 0.13);
+  --warn-line: rgba(154, 107, 47, 0.32);
+  --ok: var(--sage);
+  --ok-bg: var(--sage-tint);
+
+  /* ---------- 圆角：Apple Squircle 连续曲率 ---------- */
+  /* 真正的连续曲率要靠 SVG 滤镜或 clip-path 算，代价大；
+     这里用「外大内小」的搭配去逼近那种饱满感：容器 16，内部控件 8–10 */
+  --radius-lg: 20px;
+  --radius: 16px;
+  --radius-sm: 10px;
+  --radius-xs: 8px;
+
+  /* ---------- 动效 ---------- */
+  /* 阻尼弹簧曲线（对应 stiffness 380 / damping 30 那种手感：快进 + 轻微过冲 + 收住） */
+  --spring: cubic-bezier(0.22, 1.2, 0.36, 1);
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur: 200ms;
+
+  /* ---------- 8px 栅格 ---------- */
+  --s1: 8px;
+  --s2: 16px;
+  --s3: 24px;
+  --s4: 32px;
+  --s5: 48px;
+
+  --font: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', system-ui,
+    'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
 }
 
 * {
@@ -63,11 +146,32 @@ body {
 body {
   font-family: var(--font);
   font-size: 13px;
-  line-height: 1.6;
+  line-height: 1.5;
   font-weight: 400;
   color: var(--text-1);
   background: var(--bg-page);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.003em;
+}
+
+/*
+  环境光晕：纯粹为「玻璃后面得有点东西」而存在的一层极淡色雾。
+  刻意做成完全抽象的三团柔光，没有任何形状、边界或具象元素。
+*/
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  /* 压到内容下面，但仍在纸张底色之上 —— 这样玻璃才有东西可以模糊。
+     用负 z-index 而不是给 .shell 加 z-index，是为了不新开层叠上下文，
+     免得把「浮层」和「抽屉」的上下关系搞乱。 */
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(760px 520px at 12% 4%, rgba(46, 91, 136, 0.05), transparent 62%),
+    radial-gradient(680px 460px at 88% 10%, rgba(217, 107, 67, 0.045), transparent 64%),
+    radial-gradient(900px 620px at 62% 96%, rgba(74, 124, 89, 0.04), transparent 66%);
 }
 
 h1,
@@ -107,27 +211,46 @@ a {
 }
 
 .sidebar {
-  width: 196px;
+  width: 208px;
   flex: none;
-  background: var(--bg-soft);
-  border-right: 0.5px solid var(--line-1);
-  padding: 20px 12px;
+  padding: var(--s3) var(--s2);
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: var(--s3);
+  /* 侧边栏本身也是一块竖着的玻璃 */
+  background: rgba(248, 247, 243, 0.62);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border-right: var(--glass-edge);
+  box-shadow: 1px 0 0 rgba(28, 30, 33, 0.03), 8px 0 32px -12px rgba(35, 31, 32, 0.05);
 }
 
 .brand {
   font-size: 14px;
-  font-weight: 500;
-  padding: 0 8px 12px;
-  letter-spacing: 0.02em;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  padding: 0 var(--s1) var(--s2);
+  color: var(--text-1);
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+}
+
+/* 品牌前面一颗小小的光学珠子，纯装饰 */
+.brand::before {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+  background: radial-gradient(circle at 32% 28%, #fff, rgba(46, 91, 136, 0.55) 58%, rgba(46, 91, 136, 0.85));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.6), 0 2px 6px -1px rgba(35, 31, 32, 0.25);
 }
 
 .nav {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--s3);
 }
 
 .nav-group {
@@ -138,89 +261,189 @@ a {
 
 .nav-group-title {
   font-size: 11px;
-  color: var(--text-3);
-  padding: 0 8px 4px;
+  color: var(--text-4);
+  letter-spacing: 0.06em;
+  padding: 0 var(--s1) var(--s1);
 }
 
 .nav-item {
+  position: relative;
   display: block;
-  padding: 6px 8px;
+  padding: 7px var(--s2) 7px 14px;
   border-radius: var(--radius-sm);
   font-size: 13px;
-  color: var(--text-1);
+  color: var(--text-2);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease),
+    transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+
+/* 选中项左侧那枚 3px 竖向指示胶囊 */
+.nav-item::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  width: 3px;
+  height: 0;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: 0;
+  transform: translateY(-50%);
+  transition: height var(--dur) var(--spring), opacity var(--dur) var(--ease);
 }
 
 .nav-item:hover {
-  background: rgba(0, 0, 0, 0.045);
+  background: rgba(255, 255, 255, 0.5);
+  color: var(--text-1);
 }
 
 .nav-item.is-active {
-  background: var(--bg-surface);
-  border: 0.5px solid var(--line-1);
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--text-1);
   font-weight: 500;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7),
+    inset 0 1px 1px rgba(255, 255, 255, 0.9), 0 2px 8px -2px rgba(35, 31, 32, 0.08);
+}
+
+.nav-item.is-active::before {
+  height: 16px;
+  opacity: 1;
+}
+
+/* 每个模块有自己的点缀色：胶囊、以及内容区的强调色 */
+.nav-item[data-nav='dev'].is-active {
+  --accent: var(--cobalt);
+}
+.nav-item[data-nav='media'].is-active {
+  --accent: var(--clay);
+}
+.nav-item[data-nav='consult'].is-active {
+  --accent: var(--ochre);
+}
+.nav-item[data-nav='fitness'].is-active {
+  --accent: var(--sage);
+}
+.nav-item[data-nav='diet'].is-active {
+  --accent: var(--rose);
+}
+.nav-item[data-nav='games'].is-active,
+.nav-item[data-nav='settings'].is-active {
+  --accent: var(--slate);
 }
 
 .content {
   flex: 1;
   min-width: 0;
-  padding: 20px 28px 60px;
+  padding: var(--s4) var(--s4) 72px;
   max-width: 1180px;
+  transition: padding var(--dur) var(--ease);
+}
+
+/* 内容区跟着当前模块换强调色 */
+.content[data-module='dev'] {
+  --accent: var(--cobalt);
+  --accent-tint: var(--cobalt-tint);
+  --accent-line: var(--cobalt-line);
+  --accent-ink: #1d3f5f;
+}
+.content[data-module='media'] {
+  --accent: var(--clay);
+  --accent-tint: var(--clay-tint);
+  --accent-line: var(--clay-line);
+  --accent-ink: #8f3f22;
+}
+.content[data-module='consult'] {
+  --accent: var(--ochre);
+  --accent-tint: var(--ochre-tint);
+  --accent-line: var(--ochre-line);
+  --accent-ink: #6d4a1c;
+}
+.content[data-module='fitness'] {
+  --accent: var(--sage);
+  --accent-tint: var(--sage-tint);
+  --accent-line: var(--sage-line);
+  --accent-ink: #33573e;
+}
+.content[data-module='diet'] {
+  --accent: var(--rose);
+  --accent-tint: var(--rose-tint);
+  --accent-line: var(--rose-line);
+  --accent-ink: #743c4e;
+}
+.content[data-module='games'],
+.content[data-module='settings'] {
+  --accent: var(--slate);
+  --accent-tint: var(--slate-tint);
+  --accent-line: var(--slate-line);
+  --accent-ink: #4b5058;
 }
 
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 18px;
-  min-height: 24px;
+  gap: var(--s2);
+  margin-bottom: var(--s3);
+  min-height: 32px;
 }
 
 .page-title {
-  font-size: 15px;
-  font-weight: 500;
+  /* 模块大标题 20px / Semi-Bold / 紧字距 */
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text-1);
 }
 
 .save-badge {
-  font-size: 12px;
-  color: var(--text-3);
+  font-size: 11px;
+  color: var(--text-4);
+  padding: 4px var(--s1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.6);
   opacity: 0;
-  transition: opacity 0.3s ease;
+  transform: translateY(-2px);
+  transition: opacity var(--dur) var(--ease), transform var(--dur) var(--spring);
 }
 
 .save-badge.is-visible {
   opacity: 1;
+  transform: translateY(0);
 }
 
 /* ---------- 启动占位 / 恢复引导 ---------- */
 
 .boot {
   max-width: 520px;
-  margin: 80px auto;
-  padding: 24px;
-  background: var(--bg-surface);
-  border: 0.5px solid var(--line-1);
-  border-radius: var(--radius);
+  margin: 96px auto;
+  padding: var(--s4);
+  background: var(--glass-bg-strong);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: var(--glass-edge);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--glass-shadow);
   text-align: center;
 }
 
 .boot-title {
   font-size: 15px;
-  font-weight: 500;
-  margin-bottom: 8px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-bottom: var(--s1);
 }
 
 .boot-hint {
   font-size: 12px;
-  color: var(--text-2);
-  margin-top: 8px;
+  color: var(--text-3);
+  margin-top: var(--s1);
 }
 
 .boot-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--s1);
   justify-content: center;
-  margin-top: 16px;
+  margin-top: var(--s2);
 }
 
 /* ---------- 滚动条 ---------- */
@@ -231,12 +454,29 @@ a {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.14);
+  background: rgba(28, 30, 33, 0.16);
   border-radius: 6px;
   border: 3px solid transparent;
   background-clip: content-box;
 }
 
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(28, 30, 33, 0.26);
+  background-clip: content-box;
+}
+
 ::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* ---------- 尊重系统的「减弱动态效果」 ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
