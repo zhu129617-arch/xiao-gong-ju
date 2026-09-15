@@ -27,7 +27,7 @@ describe('数据文件层（server/datafile.js）', () => {
     }
     assert.equal(d.版本, df.CURRENT_VERSION);
     assert.deepEqual(d.自媒体, { 选题: [], 内容: [], 素材: [] });
-    assert.deepEqual(d.开发, { 项目: [], 笔记: [], 计时: [] });
+    assert.deepEqual(d.开发, { 项目: [], 里程碑: [], 功能: [], Bug: [], 日志: [], 笔记: [], 计时: [] });
     assert.deepEqual(d.咨询, { 客户: [], 沟通: [], 待跟进: [], 交付物: [], 工时: [] });
     assert.deepEqual(d.健身, { 计划模板: {}, 打卡: [] });
     assert.deepEqual(d.饮食, { 食物库: [], 记录: {}, 饮水: {}, 体重: [] });
@@ -48,6 +48,56 @@ describe('数据文件层（server/datafile.js）', () => {
     assert.equal(out.设置.热量目标, 1800);
     assert.equal(out.备忘.length, 1);
     assert.deepEqual(out.自媒体, { 选题: [], 内容: [], 素材: [] });
+  });
+
+  test('旧版「项目里的任务列表」会自动迁移成新的【功能列表】', () => {
+    const 旧 = {
+      版本: 1,
+      开发: {
+        项目: [
+          {
+            id: 'p1',
+            名称: '老项目',
+            状态: '进行中',
+            仓库路径或链接: '',
+            备注: '',
+            任务列表: [
+              { id: 'pj1', 标题: '做完了的', 状态: '已完成', 创建日期: '2026-09-14', 完成日期: '2026-09-15' },
+              { id: 'pj2', 标题: '还在做的', 状态: '进行中', 创建日期: '2026-09-15', 完成日期: null },
+            ],
+          },
+        ],
+      },
+    };
+
+    const out = df.normalize(旧);
+    assert.equal(out.版本, df.CURRENT_VERSION);
+    // 任务列表这个字段不该再留在项目上
+    assert.equal('任务列表' in out.开发.项目[0], false);
+    assert.equal(out.开发.功能.length, 2);
+
+    const f1 = out.开发.功能.find((f) => f.id === 'pj1');
+    assert.equal(f1.所属项目, 'p1');
+    assert.equal(f1.所属里程碑, null);
+    assert.equal(f1.状态, '已完成');
+    assert.equal(f1.完成日期, '2026-09-15');
+    assert.equal(f1.归档, true);
+
+    const f2 = out.开发.功能.find((f) => f.id === 'pj2');
+    assert.equal(f2.状态, '进行中');
+    assert.equal(f2.归档, false);
+
+    // 新增的四个数组必须补齐
+    assert.ok(Array.isArray(out.开发.里程碑));
+    assert.ok(Array.isArray(out.开发.Bug));
+    assert.ok(Array.isArray(out.开发.日志));
+  });
+
+  test('迁移是幂等的：跑两次不会把功能复制成两份', () => {
+    const 旧 = { 开发: { 项目: [{ id: 'p1', 名称: 'x', 任务列表: [{ id: 'a', 标题: 'A', 状态: '待办' }] }] } };
+    const 一次 = df.normalize(旧);
+    const 二次 = df.normalize(一次);
+    assert.equal(二次.开发.功能.length, 1);
   });
 
   test('文件不存在时读到「缺失」状态', () => {

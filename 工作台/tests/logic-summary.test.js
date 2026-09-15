@@ -41,17 +41,31 @@ describe('六个模块的汇总（PRD §3.4 摘要卡的算法）', () => {
     assert.deepEqual(m.阶段, { 灵感: 0, 制作中: 0, 已发布: 0 });
   });
 
-  test('开发：进行中任务数跨项目统计，今日计时只算今天', () => {
+  test('开发：功能与 Bug 跨项目统计，今日计时只算今天', () => {
     const d = devSummary(richData(), TODAY);
     assert.equal(d.项目数, 2);
     assert.equal(d.进行中项目, 2);
-    // 工作台：pj2、pj3 进行中；接单：pk1 进行中
-    assert.equal(d.进行中任务, 3);
-    assert.equal(d.待办任务, 2);
-    assert.equal(d.已完成任务, 1);
+    assert.equal(d.里程碑数, 3);
+    // 工作台：fj2、fj3 进行中；接单：fk1 进行中
+    assert.equal(d.功能数, 6);
+    assert.equal(d.进行中功能, 3);
+    assert.equal(d.待办功能, 2);
+    assert.equal(d.已完成功能, 1);
+    // bg1 待修（致命）、bg2 已修复、bg3 修复中
+    assert.equal(d.Bug数, 3);
+    assert.equal(d.待修Bug, 2, '待修 + 修复中');
+    assert.equal(d.致命Bug, 1);
     // w1(50) + w2(30) 是今天，w3(60) 是昨天
     assert.equal(d.今日分钟, 80);
     assert.equal(d.累计分钟, 140);
+  });
+
+  test('开发：Bug 收尾之后不再计入「致命 Bug 未修」', () => {
+    const d = richData();
+    d.开发.Bug.find((b) => b.id === 'bg1').状态 = '已修复';
+    const s = devSummary(d, TODAY);
+    assert.equal(s.致命Bug, 0);
+    assert.equal(s.待修Bug, 1, '只剩 bg3 还在修复中');
   });
 
   test('开发：计时时长既认「时长分钟」，也能从起止时间算出来', () => {
@@ -180,7 +194,8 @@ describe('首页六张摘要卡（PRD §3.4）', () => {
     assert.equal(byKey.media.主, '本周 2 条');
     assert.equal(byKey.media.说明, '待处理素材 3 个');
     assert.equal(byKey.dev.主, '进行中 3 项');
-    assert.equal(byKey.dev.说明, '今日已计时 1 小时 20 分');
+    assert.equal(byKey.dev.说明, '有 1 个致命 Bug 没修');
+    assert.equal(byKey.dev.警示, true, '有致命 Bug 时首页卡要变警示色');
     assert.equal(byKey.consult.主, '今日待跟进 2 位');
     assert.equal(byKey.consult.说明, '有 1 项已逾期');
     assert.equal(byKey.consult.警示, true);
@@ -244,7 +259,7 @@ describe('首页六张摘要卡（PRD §3.4）', () => {
     const d = richData();
     const cards = homeCards(d, TODAY);
     const byKey = Object.fromEntries(cards.map((c) => [c.key, c]));
-    assert.equal(byKey.dev.主, `进行中 ${devSummary(d, TODAY).进行中任务} 项`);
+    assert.equal(byKey.dev.主, `进行中 ${devSummary(d, TODAY).进行中功能} 项`);
     assert.equal(byKey.games.在玩数, undefined);
     assert.equal(byKey.fitness.说明.includes(String(fitnessSummary(d, TODAY).本周已练)), true);
     assert.equal(byKey.diet.主.startsWith(String(dietSummary(d, TODAY).今日热量)), true);

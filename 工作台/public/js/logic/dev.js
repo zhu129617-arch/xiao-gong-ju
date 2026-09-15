@@ -1,16 +1,35 @@
-/** 开发工作的纯逻辑：项目、任务三栏、片段笔记、项目计时 */
+/**
+ * 开发工作的纯逻辑。
+ *
+ * 五层结构（自上而下）：
+ *   项目 → 里程碑 → 功能列表 → Bug 追踪 → 开发日志
+ * 每个下层用「所属项目 / 所属里程碑」指回上层，数据是平的、不嵌套，
+ * 这样删除上层时能精确控制要不要连带删下层。
+ * 另外还有片段笔记与项目计时两块辅助数据。
+ */
 
 import { newId, addFromModule } from './tasks.js';
 import { todayKey, minutesBetween } from '../dates.js';
 
 export const PROJECT_STATES = ['进行中', '暂停', '已完成'];
-export const TASK_STATES = ['待办', '进行中', '已完成'];
+export const MILESTONE_STATES = ['未开始', '进行中', '已完成'];
+export const FEATURE_STATES = ['待办', '进行中', '已完成'];
+export const BUG_STATES = ['待修', '修复中', '已修复', '不修'];
+export const BUG_LEVELS = ['致命', '严重', '一般', '轻微'];
+export const PRIORITY_OPTIONS = ['高', '中', '低', '无'];
+
+/** Bug 进入这两个状态视为「这条已经收尾了」 */
+export const BUG_CLOSED_STATES = ['已修复', '不修'];
 
 export function emptySection(data) {
   return data.开发.项目.length === 0;
 }
 
-// ---------- 项目 ----------
+function 数组(v) {
+  return Array.isArray(v) ? v : [];
+}
+
+// ---------- 第一层：项目 ----------
 
 export function addProject(data, 名称, extra = {}) {
   const text = String(名称 || '').trim();
@@ -21,7 +40,6 @@ export function addProject(data, 名称, extra = {}) {
     状态: PROJECT_STATES.includes(extra.状态) ? extra.状态 : '进行中',
     仓库路径或链接: extra.仓库路径或链接 || '',
     备注: extra.备注 || '',
-    任务列表: [],
   };
   data.开发.项目.push(project);
   return project;
@@ -41,23 +59,33 @@ export function updateProject(data, id, patch = {}) {
   return p;
 }
 
-/** 删项目会把它的任务、笔记、计时一起带走（界面必须先二次确认） */
+/**
+ * 删项目会把它的里程碑、功能、Bug、日志、笔记、计时一起带走。
+ * 界面必须先二次确认，并把 projectDeleteImpact 的数字摆出来。
+ */
 export function removeProject(data, id) {
   const before = data.开发.项目.length;
   data.开发.项目 = data.开发.项目.filter((p) => p.id !== id);
   if (data.开发.项目.length === before) return false;
-  data.开发.笔记 = data.开发.笔记.filter((n) => n.所属项目 !== id);
-  data.开发.计时 = data.开发.计时.filter((w) => w.所属项目 !== id);
+  data.开发.里程碑 = 数组(data.开发.里程碑).filter((m) => m.所属项目 !== id);
+  data.开发.功能 = 数组(data.开发.功能).filter((f) => f.所属项目 !== id);
+  data.开发.Bug = 数组(data.开发.Bug).filter((b) => b.所属项目 !== id);
+  data.开发.日志 = 数组(data.开发.日志).filter((g) => g.所属项目 !== id);
+  data.开发.笔记 = 数组(data.开发.笔记).filter((n) => n.所属项目 !== id);
+  data.开发.计时 = 数组(data.开发.计时).filter((w) => w.所属项目 !== id);
   return true;
 }
 
 export function projectDeleteImpact(data, id) {
   const p = findProject(data, id);
-  if (!p) return { 任务: 0, 笔记: 0, 计时: 0 };
+  if (!p) return { 里程碑: 0, 功能: 0, Bug: 0, 日志: 0, 笔记: 0, 计时: 0 };
   return {
-    任务: (p.任务列表 || []).length,
-    笔记: data.开发.笔记.filter((n) => n.所属项目 === id).length,
-    计时: data.开发.计时.filter((w) => w.所属项目 === id).length,
+    里程碑: 数组(data.开发.里程碑).filter((m) => m.所属项目 === id).length,
+    功能: 数组(data.开发.功能).filter((f) => f.所属项目 === id).length,
+    Bug: 数组(data.开发.Bug).filter((b) => b.所属项目 === id).length,
+    日志: 数组(data.开发.日志).filter((g) => g.所属项目 === id).length,
+    笔记: 数组(data.开发.笔记).filter((n) => n.所属项目 === id).length,
+    计时: 数组(data.开发.计时).filter((w) => w.所属项目 === id).length,
   };
 }
 
@@ -67,64 +95,251 @@ export function sortedProjects(data) {
   return [...data.开发.项目].sort((a, b) => (order[a.状态] ?? 9) - (order[b.状态] ?? 9));
 }
 
-// ---------- 任务三栏 ----------
+// ---------- 第二层：里程碑 ----------
 
-export function tasksOfProject(data, projectId) {
-  const p = findProject(data, projectId);
-  return p && Array.isArray(p.任务列表) ? p.任务列表 : [];
+export function addMilestone(data, projectId, 名称, extra = {}) {
+  if (!findProject(data, projectId)) throw new Error('项目不存在');
+  const text = String(名称 || '').trim();
+  if (!text) throw new Error('里程碑名称不能为空');
+  if (!Array.isArray(data.开发.里程碑)) data.开发.里程碑 = [];
+  const m = {
+    id: newId('ms'),
+    所属项目: projectId,
+    名称: text,
+    状态: MILESTONE_STATES.includes(extra.状态) ? extra.状态 : '未开始',
+    目标日期: extra.目标日期 || '',
+    备注: extra.备注 || '',
+    排序: 数组(data.开发.里程碑).filter((x) => x.所属项目 === projectId).length,
+  };
+  data.开发.里程碑.push(m);
+  return m;
 }
 
-export function tasksByState(data, projectId) {
+export function findMilestone(data, id) {
+  return 数组(data.开发.里程碑).find((m) => m.id === id) || null;
+}
+
+export function updateMilestone(data, id, patch = {}) {
+  const m = findMilestone(data, id);
+  if (!m) return null;
+  if ('名称' in patch && String(patch.名称).trim()) m.名称 = String(patch.名称).trim();
+  if (MILESTONE_STATES.includes(patch.状态)) m.状态 = patch.状态;
+  if ('目标日期' in patch) m.目标日期 = String(patch.目标日期 || '');
+  if ('备注' in patch) m.备注 = String(patch.备注 || '');
+  return m;
+}
+
+/** 里程碑的状态不手工同步：由它下面的功能/Bug 推出来，避免两处各说各话 */
+export function milestoneProgress(data, milestoneId) {
+  const 功能 = 数组(data.开发.功能).filter((f) => f.所属里程碑 === milestoneId);
+  const Bug = 数组(data.开发.Bug).filter((b) => b.所属里程碑 === milestoneId);
+  const 功能完成 = 功能.filter((f) => f.状态 === '已完成').length;
+  const Bug关闭 = Bug.filter((b) => BUG_CLOSED_STATES.includes(b.状态)).length;
+  const 总 = 功能.length + Bug.length;
+  const 完 = 功能完成 + Bug关闭;
+  return {
+    功能数: 功能.length,
+    功能完成,
+    Bug数: Bug.length,
+    Bug关闭,
+    总,
+    完成: 完,
+    百分比: 总 === 0 ? 0 : Math.round((完 / 总) * 100),
+  };
+}
+
+/**
+ * 删里程碑不删下面的工作项，只把它们「脱离」里程碑。
+ * 理由：里程碑只是分组，删分组不该顺手删掉真实的工作内容。
+ */
+export function removeMilestone(data, id) {
+  const m = findMilestone(data, id);
+  if (!m) return false;
+  data.开发.里程碑 = 数组(data.开发.里程碑).filter((x) => x.id !== id);
+  for (const f of 数组(data.开发.功能)) if (f.所属里程碑 === id) f.所属里程碑 = null;
+  for (const b of 数组(data.开发.Bug)) if (b.所属里程碑 === id) b.所属里程碑 = null;
+  return true;
+}
+
+export function milestonesOf(data, projectId) {
+  return 数组(data.开发.里程碑)
+    .filter((m) => m.所属项目 === projectId)
+    .sort((a, b) => (a.排序 ?? 0) - (b.排序 ?? 0));
+}
+
+// ---------- 第三层：功能列表 ----------
+
+export function addFeature(data, projectId, 标题, extra = {}, today = todayKey()) {
+  if (!findProject(data, projectId)) throw new Error('项目不存在');
+  const text = String(标题 || '').trim();
+  if (!text) throw new Error('功能名称不能为空');
+  if (!Array.isArray(data.开发.功能)) data.开发.功能 = [];
+  const 状态 = FEATURE_STATES.includes(extra.状态) ? extra.状态 : '待办';
+  const f = {
+    id: newId('ft'),
+    所属项目: projectId,
+    所属里程碑: extra.所属里程碑 || null,
+    标题: text,
+    状态,
+    优先级: PRIORITY_OPTIONS.includes(extra.优先级) ? extra.优先级 : '无',
+    创建日期: today,
+    完成日期: 状态 === '已完成' ? today : null,
+    归档: 状态 === '已完成',
+    备注: extra.备注 || '',
+  };
+  data.开发.功能.push(f);
+  return f;
+}
+
+export function findFeature(data, id) {
+  return 数组(data.开发.功能).find((f) => f.id === id) || null;
+}
+
+export function updateFeature(data, id, patch = {}) {
+  const f = findFeature(data, id);
+  if (!f) return null;
+  if ('标题' in patch && String(patch.标题).trim()) f.标题 = String(patch.标题).trim();
+  if ('备注' in patch) f.备注 = String(patch.备注 || '');
+  if (PRIORITY_OPTIONS.includes(patch.优先级)) f.优先级 = patch.优先级;
+  if ('所属里程碑' in patch) f.所属里程碑 = patch.所属里程碑 || null;
+  return f;
+}
+
+/** 改状态；改成「已完成」时记完成日期并归档，改回去就都撤掉 */
+export function moveFeature(data, id, 状态, today = todayKey()) {
+  const f = findFeature(data, id);
+  if (!f || !FEATURE_STATES.includes(状态)) return null;
+  f.状态 = 状态;
+  f.完成日期 = 状态 === '已完成' ? today : null;
+  f.归档 = 状态 === '已完成';
+  return f;
+}
+
+export function removeFeature(data, id) {
+  const list = 数组(data.开发.功能);
+  const before = list.length;
+  data.开发.功能 = list.filter((f) => f.id !== id);
+  return data.开发.功能.length < before;
+}
+
+export function featuresOf(data, projectId) {
+  return 数组(data.开发.功能).filter((f) => f.所属项目 === projectId);
+}
+
+export function featuresByState(data, projectId) {
   const out = { 待办: [], 进行中: [], 已完成: [] };
-  for (const t of tasksOfProject(data, projectId)) {
-    if (out[t.状态]) out[t.状态].push(t);
-    else out.待办.push(t);
+  for (const f of featuresOf(data, projectId)) {
+    if (out[f.状态]) out[f.状态].push(f);
+    else out.待办.push(f);
   }
   return out;
 }
 
-export function addTask(data, projectId, 标题, today = todayKey()) {
-  const p = findProject(data, projectId);
-  if (!p) throw new Error('项目不存在');
+export function nextFeatureState(状态) {
+  const i = FEATURE_STATES.indexOf(状态);
+  return i < 0 || i >= FEATURE_STATES.length - 1 ? null : FEATURE_STATES[i + 1];
+}
+
+// ---------- 第四层：Bug 追踪 ----------
+
+export function addBug(data, projectId, 标题, extra = {}, today = todayKey()) {
+  if (!findProject(data, projectId)) throw new Error('项目不存在');
   const text = String(标题 || '').trim();
-  if (!text) throw new Error('任务内容不能为空');
-  if (!Array.isArray(p.任务列表)) p.任务列表 = [];
-  const task = { id: newId('pj'), 标题: text, 状态: '待办', 创建日期: today, 完成日期: null };
-  p.任务列表.push(task);
-  return task;
+  if (!text) throw new Error('Bug 标题不能为空');
+  if (!Array.isArray(data.开发.Bug)) data.开发.Bug = [];
+  const 状态 = BUG_STATES.includes(extra.状态) ? extra.状态 : '待修';
+  const b = {
+    id: newId('bg'),
+    所属项目: projectId,
+    所属里程碑: extra.所属里程碑 || null,
+    所属功能: extra.所属功能 || null,
+    标题: text,
+    严重程度: BUG_LEVELS.includes(extra.严重程度) ? extra.严重程度 : '一般',
+    状态,
+    创建日期: today,
+    完成日期: BUG_CLOSED_STATES.includes(状态) ? today : null,
+    归档: BUG_CLOSED_STATES.includes(状态),
+    备注: extra.备注 || '',
+  };
+  data.开发.Bug.push(b);
+  return b;
 }
 
-export function findTask(data, projectId, taskId) {
-  return tasksOfProject(data, projectId).find((t) => t.id === taskId) || null;
+export function findBug(data, id) {
+  return 数组(data.开发.Bug).find((b) => b.id === id) || null;
 }
 
-export function updateTask(data, projectId, taskId, patch = {}) {
-  const t = findTask(data, projectId, taskId);
-  if (!t) return null;
-  if ('标题' in patch && String(patch.标题).trim()) t.标题 = String(patch.标题).trim();
-  return t;
+export function updateBug(data, id, patch = {}) {
+  const b = findBug(data, id);
+  if (!b) return null;
+  if ('标题' in patch && String(patch.标题).trim()) b.标题 = String(patch.标题).trim();
+  if ('备注' in patch) b.备注 = String(patch.备注 || '');
+  if (BUG_LEVELS.includes(patch.严重程度)) b.严重程度 = patch.严重程度;
+  if ('所属里程碑' in patch) b.所属里程碑 = patch.所属里程碑 || null;
+  if ('所属功能' in patch) b.所属功能 = patch.所属功能 || null;
+  return b;
 }
 
-/** 改状态；改成「已完成」时记下完成日期，改回去就清掉 */
-export function moveTask(data, projectId, taskId, 状态, today = todayKey()) {
-  const t = findTask(data, projectId, taskId);
-  if (!t || !TASK_STATES.includes(状态)) return null;
-  t.状态 = 状态;
-  t.完成日期 = 状态 === '已完成' ? today : null;
-  return t;
+/** 改状态；进入「已修复 / 不修」都算收尾，记完成日期并归档 */
+export function moveBug(data, id, 状态, today = todayKey()) {
+  const b = findBug(data, id);
+  if (!b || !BUG_STATES.includes(状态)) return null;
+  b.状态 = 状态;
+  const 收尾 = BUG_CLOSED_STATES.includes(状态);
+  b.完成日期 = 收尾 ? today : null;
+  b.归档 = 收尾;
+  return b;
 }
 
-export function removeTask(data, projectId, taskId) {
-  const p = findProject(data, projectId);
-  if (!p || !Array.isArray(p.任务列表)) return false;
-  const before = p.任务列表.length;
-  p.任务列表 = p.任务列表.filter((t) => t.id !== taskId);
-  return p.任务列表.length < before;
+export function removeBug(data, id) {
+  const list = 数组(data.开发.Bug);
+  const before = list.length;
+  data.开发.Bug = list.filter((b) => b.id !== id);
+  return data.开发.Bug.length < before;
 }
 
-export function nextState(状态) {
-  const i = TASK_STATES.indexOf(状态);
-  return i < 0 || i >= TASK_STATES.length - 1 ? null : TASK_STATES[i + 1];
+export function bugsOf(data, projectId) {
+  return 数组(data.开发.Bug).filter((b) => b.所属项目 === projectId);
+}
+
+export function bugsByState(data, projectId) {
+  const out = {};
+  for (const s of BUG_STATES) out[s] = [];
+  for (const b of bugsOf(data, projectId)) {
+    if (out[b.状态]) out[b.状态].push(b);
+    else out.待修.push(b);
+  }
+  return out;
+}
+
+export function nextBugState(状态) {
+  const i = BUG_STATES.indexOf(状态);
+  return i < 0 || i >= BUG_STATES.length - 1 ? null : BUG_STATES[i + 1];
+}
+
+/** 严重程度排序：致命排最前 */
+export function sortedBugs(list) {
+  const order = { 致命: 0, 严重: 1, 一般: 2, 轻微: 3 };
+  return [...list].sort((a, b) => (order[a.严重程度] ?? 9) - (order[b.严重程度] ?? 9));
+}
+
+// ---------- 第五层：开发日志 ----------
+
+export function findLog(data, id) {
+  return 数组(data.开发.日志).find((g) => g.id === id) || null;
+}
+
+export function logsOf(data, projectId) {
+  return 数组(data.开发.日志)
+    .filter((g) => g.所属项目 === projectId)
+    .sort((a, b) => String(b.时间).localeCompare(String(a.时间)));
+}
+
+export function removeLog(data, id) {
+  const list = 数组(data.开发.日志);
+  const before = list.length;
+  data.开发.日志 = list.filter((g) => g.id !== id);
+  return data.开发.日志.length < before;
 }
 
 // ---------- 片段笔记 ----------
@@ -133,19 +348,21 @@ export function addNote(data, projectId, 正文) {
   const text = String(正文 || '').trim();
   if (!text) throw new Error('笔记内容不能为空');
   const note = { id: newId('n'), 所属项目: projectId, 正文: text, 创建时间: new Date().toISOString() };
+  if (!Array.isArray(data.开发.笔记)) data.开发.笔记 = [];
   data.开发.笔记.push(note);
   return note;
 }
 
 export function notesOf(data, projectId) {
-  return data.开发.笔记
+  return 数组(data.开发.笔记)
     .filter((n) => n.所属项目 === projectId)
     .sort((a, b) => String(b.创建时间).localeCompare(String(a.创建时间)));
 }
 
 export function removeNote(data, id) {
-  const before = data.开发.笔记.length;
-  data.开发.笔记 = data.开发.笔记.filter((n) => n.id !== id);
+  const list = 数组(data.开发.笔记);
+  const before = list.length;
+  data.开发.笔记 = list.filter((n) => n.id !== id);
   return data.开发.笔记.length < before;
 }
 
@@ -153,7 +370,7 @@ export function removeNote(data, id) {
 
 /** 正在计时的记录（没有结束时间的那条），最多只允许有一条 */
 export function runningTimer(data) {
-  return data.开发.计时.find((w) => !w.结束时间 && w.开始时间) || null;
+  return 数组(data.开发.计时).find((w) => !w.结束时间 && w.开始时间) || null;
 }
 
 export function runningProjectId(data) {
@@ -187,6 +404,7 @@ export function startTimer(data, projectId, now = new Date()) {
     结束时间: null,
     时长分钟: 0,
   };
+  if (!Array.isArray(data.开发.计时)) data.开发.计时 = [];
   data.开发.计时.push(record);
   return { ok: true, 已在计时: false, record, 停掉了上一个: stopped };
 }
@@ -200,14 +418,25 @@ export function stopTimer(data, now = new Date()) {
 }
 
 export function timerRecordsOf(data, projectId) {
-  return data.开发.计时.filter((w) => w.所属项目 === projectId);
+  return 数组(data.开发.计时).filter((w) => w.所属项目 === projectId);
 }
 
-/** 把某个项目的任务加进今日计划 */
-export function taskToToday(data, projectId, taskId, today = todayKey()) {
-  const p = findProject(data, projectId);
-  const t = findTask(data, projectId, taskId);
-  if (!p || !t) return { ok: false, error: '找不到这条任务' };
-  const r = addFromModule(data, today, { 标题: `${p.名称}：${t.标题}`, 归属: 'dev' });
+// ---------- 加进今日计划 ----------
+
+/** 把某个项目的功能加进今日计划 */
+export function featureToToday(data, featureId, today = todayKey()) {
+  const f = findFeature(data, featureId);
+  if (!f) return { ok: false, error: '找不到这条功能' };
+  const p = findProject(data, f.所属项目);
+  const r = addFromModule(data, today, { 标题: `${p ? p.名称 + '：' : ''}${f.标题}`, 归属: 'dev' });
+  return { ok: true, task: r.task, 已存在: r.已存在 };
+}
+
+/** 把某个项目的 Bug 加进今日计划 */
+export function bugToToday(data, bugId, today = todayKey()) {
+  const b = findBug(data, bugId);
+  if (!b) return { ok: false, error: '找不到这条 Bug' };
+  const p = findProject(data, b.所属项目);
+  const r = addFromModule(data, today, { 标题: `${p ? p.名称 + '：' : ''}修 ${b.标题}`, 归属: 'dev' });
   return { ok: true, task: r.task, 已存在: r.已存在 };
 }

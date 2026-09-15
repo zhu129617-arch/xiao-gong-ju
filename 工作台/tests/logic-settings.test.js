@@ -44,7 +44,7 @@ describe('设置逻辑（logic/settings.js）', () => {
   test('导入校验：合法备份通过，并补齐缺的字段', () => {
     const r = S.validateImport(JSON.stringify(richData()));
     assert.equal(r.ok, true);
-    assert.equal(r.版本, 1);
+    assert.equal(r.版本, CURRENT_FORMAT_VERSION);
     assert.equal(r.数据.设置.昵称, '小蝶');
     assert.deepEqual(r.数据.游戏.待玩.length, 2);
 
@@ -52,6 +52,26 @@ describe('设置逻辑（logic/settings.js）', () => {
     assert.equal(少字段.ok, true);
     assert.deepEqual(少字段.数据.自媒体, { 选题: [], 内容: [], 素材: [] }, '缺的模块应该补成空结构');
     assert.ok(少字段.数据.设置, '缺的设置应该补上');
+    assert.deepEqual(
+      少字段.数据.开发,
+      { 项目: [], 里程碑: [], 功能: [], Bug: [], 日志: [], 笔记: [], 计时: [] },
+      '开发模块缺的五个层级都要补上'
+    );
+  });
+
+  test('导入一份旧版备份：里面的「任务列表」会被迁移成【功能列表】', () => {
+    const 旧备份 = {
+      版本: 1,
+      开发: {
+        项目: [{ id: 'p1', 名称: '老项目', 状态: '进行中', 任务列表: [{ id: 'x', 标题: '老任务', 状态: '进行中' }] }],
+      },
+    };
+    const r = S.validateImport(JSON.stringify(旧备份));
+    assert.equal(r.ok, true);
+    assert.equal(r.数据.开发.功能.length, 1);
+    assert.equal(r.数据.开发.功能[0].标题, '老任务');
+    assert.equal(r.数据.开发.功能[0].所属项目, 'p1');
+    assert.equal('任务列表' in r.数据.开发.项目[0], false);
   });
 
   test('导入校验：坏文件一律拒绝，并说清原因', () => {
@@ -66,7 +86,7 @@ describe('设置逻辑（logic/settings.js）', () => {
     const 未来 = S.validateImport(JSON.stringify({ 版本: 99, 备忘: [] }));
     assert.equal(未来.ok, false);
     assert.match(未来.error, /更新的版本（第 99 版）/);
-    assert.match(未来.error, /只认到第 1 版/);
+    assert.match(未来.error, new RegExp(`只认到第 ${CURRENT_FORMAT_VERSION} 版`));
   });
 
   test('导入校验：没标版本号的旧备份也能导入', () => {
@@ -96,7 +116,7 @@ describe('设置逻辑（logic/settings.js）', () => {
     const d = richData();
     assert.equal(S.clearSectionImpact(d, '每日'), 2, '两天');
     assert.equal(S.clearSectionImpact(d, '备忘'), 2);
-    assert.equal(S.clearSectionImpact(d, '开发'), 2 + 1 + 3, '项目 2 + 笔记 1 + 计时 3');
+    assert.equal(S.clearSectionImpact(d, '开发'), 2 + 3 + 6 + 3 + 2 + 1 + 3, '项目 2 + 里程碑 3 + 功能 6 + Bug 3 + 日志 2 + 笔记 1 + 计时 3');
     assert.equal(S.clearSectionImpact(d, '咨询'), 2 + 3 + 4 + 1 + 2);
     assert.equal(S.clearSectionImpact(d, '健身'), 2 + 3, '打卡 2 + 排了 3 天');
     assert.equal(S.clearSectionImpact(d, '饮食'), 3 + 1 + 1 + 2, '食物库 3 + 记录 1 天 + 饮水 1 天 + 体重 2');

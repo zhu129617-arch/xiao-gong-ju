@@ -202,7 +202,7 @@ describe('设置页面（views/settings.js）', () => {
       files: [{ text: async () => JSON.stringify({ 版本: 99, 备忘: [] }) }],
     });
     assert.equal(ctx.调用.setData.length, 0);
-    assert.match(settingsView.render(ctx), /只认到第 1 版/);
+    assert.match(settingsView.render(ctx), /只认到第 2 版/);
   });
 
   test('清空要走两步：点一次只是问，再点确认才真清', () => {

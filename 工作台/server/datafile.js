@@ -1,10 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-export const CURRENT_VERSION = 1;
+export const CURRENT_VERSION = 2;
 
 /**
- * 第一版数据文件的完整默认结构（对应 PRD §7.2）。
+ * 数据文件的完整默认结构（对应 PRD §7.2）。
  * 键名一律用中文，目的是让使用者能直接打开文件看懂里面存了什么。
  */
 export function defaultData() {
@@ -22,13 +22,60 @@ export function defaultData() {
     每日: {},
     备忘: [],
     自媒体: { 选题: [], 内容: [], 素材: [] },
-    开发: { 项目: [], 笔记: [], 计时: [] },
+    开发: {
+      项目: [],
+      里程碑: [],
+      功能: [],
+      Bug: [],
+      日志: [],
+      笔记: [],
+      计时: [],
+    },
     咨询: { 客户: [], 沟通: [], 待跟进: [], 交付物: [], 工时: [] },
     健身: { 计划模板: {}, 打卡: [] },
     饮食: { 食物库: [], 记录: {}, 饮水: {}, 体重: [] },
     游戏: { 在玩: [], 待玩: [], 时长: [] },
     元: { 已处理顺延: [] },
   };
+}
+
+/** 旧版「任务状态」→ 新版「功能状态」 */
+const 状态映射 = { 待办: '待办', 进行中: '进行中', 已完成: '已完成' };
+
+/**
+ * 把旧版开发数据迁移到五层结构（项目 → 里程碑 → 功能列表 → Bug 追踪 → 开发日志）。
+ *
+ * 旧版把任务挂在 `项目[].任务列表`，新版改成独立的【功能列表】，用「所属项目」指回来。
+ * 幂等：跑第二次时 任务列表 已被删除，不会重复生成。
+ * 前端 public/js/logic/blank.js 里有一份等价实现（浏览器加载不到服务端代码）。
+ */
+export function 迁移开发数据(开发) {
+  if (!开发 || typeof 开发 !== 'object') return 开发;
+  const 项目列表 = Array.isArray(开发.项目) ? 开发.项目 : [];
+  const 功能 = Array.isArray(开发.功能) ? 开发.功能 : [];
+
+  for (const p of 项目列表) {
+    if (Array.isArray(p.任务列表)) {
+      for (const t of p.任务列表) {
+        功能.push({
+          id: t.id,
+          所属项目: p.id,
+          所属里程碑: null,
+          标题: t.标题 || '',
+          状态: 状态映射[t.状态] || '待办',
+          优先级: t.优先级 || '无',
+          创建日期: t.创建日期 || '',
+          完成日期: t.完成日期 || null,
+          归档: t.状态 === '已完成',
+          备注: '',
+        });
+      }
+    }
+    delete p.任务列表;
+  }
+
+  开发.功能 = 功能;
+  return 开发;
 }
 
 /** 需要按对象合并（而不是整体覆盖）的一级键 */
@@ -47,6 +94,7 @@ export function normalize(raw) {
     const v = raw[key];
     out[key] = v && typeof v === 'object' && !Array.isArray(v) ? { ...b, ...v } : { ...b };
   }
+  迁移开发数据(out.开发);
   out.版本 = CURRENT_VERSION;
   return out;
 }

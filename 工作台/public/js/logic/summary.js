@@ -62,19 +62,24 @@ export function mediaSummary(data, today = todayKey()) {
 
 // ---------- 开发工作 ----------
 
-export function allDevTasks(data) {
-  const out = [];
-  for (const project of data.开发.项目 || []) {
-    for (const t of project.任务列表 || []) {
-      out.push({ ...t, 所属项目: project.id, 项目名: project.名称 });
-    }
-  }
-  return out;
+/** 把所有项目的【功能】摊平，带上项目名，方便跨项目统计 */
+export function allDevFeatures(data) {
+  const 项目名 = new Map();
+  for (const project of data.开发.项目 || []) 项目名.set(project.id, project.名称);
+  return (data.开发.功能 || []).map((f) => ({ ...f, 项目名: 项目名.get(f.所属项目) || '' }));
+}
+
+/** 把所有项目的【Bug】摊平 */
+export function allDevBugs(data) {
+  const 项目名 = new Map();
+  for (const project of data.开发.项目 || []) 项目名.set(project.id, project.名称);
+  return (data.开发.Bug || []).map((b) => ({ ...b, 项目名: 项目名.get(b.所属项目) || '' }));
 }
 
 export function devSummary(data, today = todayKey()) {
   const 项目 = data.开发.项目 || [];
-  const tasks = allDevTasks(data);
+  const 功能 = allDevFeatures(data);
+  const Bug = allDevBugs(data);
 
   let 今日分钟 = 0;
   let 累计分钟 = 0;
@@ -87,9 +92,14 @@ export function devSummary(data, today = todayKey()) {
   return {
     项目数: 项目.length,
     进行中项目: 项目.filter((p) => p.状态 === '进行中').length,
-    进行中任务: tasks.filter((t) => t.状态 === '进行中').length,
-    待办任务: tasks.filter((t) => t.状态 === '待办').length,
-    已完成任务: tasks.filter((t) => t.状态 === '已完成').length,
+    里程碑数: (data.开发.里程碑 || []).length,
+    功能数: 功能.length,
+    进行中功能: 功能.filter((f) => f.状态 === '进行中').length,
+    待办功能: 功能.filter((f) => f.状态 === '待办').length,
+    已完成功能: 功能.filter((f) => f.状态 === '已完成').length,
+    Bug数: Bug.length,
+    待修Bug: Bug.filter((b) => b.状态 === '待修' || b.状态 === '修复中').length,
+    致命Bug: Bug.filter((b) => b.严重程度 === '致命' && b.状态 !== '已修复' && b.状态 !== '不修').length,
     今日分钟,
     累计分钟,
   };
@@ -306,8 +316,16 @@ export function homeCards(data, today = todayKey()) {
     {
       key: 'dev',
       名称: '开发工作',
-      主: `进行中 ${dev.进行中任务} 项`,
-      说明: dev.今日分钟 > 0 ? `今日已计时 ${fmtMin(dev.今日分钟)}` : '今天还没开始计时',
+      主: `进行中 ${dev.进行中功能} 项`,
+      说明:
+        dev.致命Bug > 0
+          ? `有 ${dev.致命Bug} 个致命 Bug 没修`
+          : dev.待修Bug > 0
+          ? `待修 Bug ${dev.待修Bug} 个`
+          : dev.今日分钟 > 0
+          ? `今日已计时 ${fmtMin(dev.今日分钟)}`
+          : '今天还没开始计时',
+      警示: dev.致命Bug > 0,
     },
     {
       key: 'consult',

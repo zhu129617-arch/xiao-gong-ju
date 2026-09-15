@@ -5,7 +5,7 @@
  * 免得导入一个坏文件之后把现有数据搞成半死不活的状态。
  */
 
-import { blankData, blankSection, CURRENT_FORMAT_VERSION } from './blank.js';
+import { blankData, blankSection, CURRENT_FORMAT_VERSION, 迁移开发数据 } from './blank.js';
 import { ALWAYS_VISIBLE, MODULES, isModuleKey } from '../modules.js';
 
 /** 可以单独清空的模块（对应数据文件里的一级键） */
@@ -13,7 +13,7 @@ export const CLEAR_TARGETS = [
   { key: '每日', 名称: '今日计划（含所有历史日程）' },
   { key: '备忘', 名称: '快速备忘' },
   { key: '自媒体', 名称: '自媒体（选题、内容、素材）' },
-  { key: '开发', 名称: '开发工作（项目、任务、笔记、计时）' },
+  { key: '开发', 名称: '开发工作（项目、里程碑、功能、Bug、日志、笔记、计时）' },
   { key: '咨询', 名称: '咨询工作（客户、沟通、待跟进、交付物、工时）' },
   { key: '健身', 名称: '健身（计划模板、打卡记录）' },
   { key: '饮食', 名称: '饮食（食物库、四餐记录、饮水、体重）' },
@@ -79,6 +79,8 @@ export function normalizeImport(raw) {
     const v = raw[key];
     out[key] = v && typeof v === 'object' && !Array.isArray(v) ? { ...b, ...v } : { ...b };
   }
+  // 旧备份里的「任务列表」并进新的【功能列表】
+  迁移开发数据(out.开发);
   out.版本 = CURRENT_FORMAT_VERSION;
   return out;
 }
@@ -94,7 +96,8 @@ const 计数规则 = {
   每日: (v) => Object.keys(v || {}).length,
   备忘: (v) => (v || []).length,
   自媒体: (v) => v.选题.length + v.内容.length + v.素材.length,
-  开发: (v) => v.项目.length + v.笔记.length + v.计时.length,
+  开发: (v) =>
+    v.项目.length + v.里程碑.length + v.功能.length + v.Bug.length + v.日志.length + v.笔记.length + v.计时.length,
   咨询: (v) => v.客户.length + v.沟通.length + v.待跟进.length + v.交付物.length + v.工时.length,
   健身: (v) => v.打卡.length + Object.keys(v.计划模板 || {}).length,
   饮食: (v) =>

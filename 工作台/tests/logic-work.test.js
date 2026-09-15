@@ -141,20 +141,43 @@ describe('自媒体逻辑（logic/media.js）', () => {
 });
 
 describe('开发工作逻辑（logic/dev.js）', () => {
-  test('新建项目：默认进行中、任务列表是空的', () => {
+  test('新建项目：默认进行中，不再自带「任务列表」这个字段', () => {
     const d = emptyData();
     const p = dev.addProject(d, '  工作台  ');
     assert.equal(p.名称, '工作台');
     assert.equal(p.状态, '进行中');
-    assert.deepEqual(p.任务列表, []);
+    assert.equal(dev.PROJECT_STATES.includes(p.状态), true);
+    // 五层结构里任务已经被【功能列表】取代，项目上不该再有这个字段
+    assert.equal('任务列表' in p, false);
     assert.throws(() => dev.addProject(d, '  '), /不能为空/);
   });
 
-  test('删项目会连带删掉它的任务、笔记、计时；别的项目不受影响', () => {
+  test('删项目会连带删掉它的里程碑、功能、Bug、日志、笔记、计时；别的项目不受影响', () => {
     const d = richData();
-    assert.deepEqual(dev.projectDeleteImpact(d, 'p1'), { 任务: 4, 笔记: 1, 计时: 2 });
+    assert.deepEqual(dev.projectDeleteImpact(d, 'p1'), {
+      里程碑: 2,
+      功能: 4,
+      Bug: 2,
+      日志: 2,
+      笔记: 1,
+      计时: 2,
+    });
+
     assert.equal(dev.removeProject(d, 'p1'), true);
     assert.equal(d.开发.项目.length, 1);
+    assert.deepEqual(
+      d.开发.里程碑.map((m) => m.所属项目),
+      ['p2']
+    );
+    assert.deepEqual(
+      d.开发.功能.map((f) => f.所属项目),
+      ['p2', 'p2']
+    );
+    assert.deepEqual(
+      d.开发.Bug.map((b) => b.所属项目),
+      ['p2']
+    );
+    assert.deepEqual(d.开发.日志, []);
     assert.equal(d.开发.笔记.length, 0);
     assert.deepEqual(
       d.开发.计时.map((w) => w.所属项目),
@@ -163,29 +186,159 @@ describe('开发工作逻辑（logic/dev.js）', () => {
     assert.equal(dev.removeProject(d, '不存在'), false);
   });
 
-  test('任务三栏', () => {
-    const byState = dev.tasksByState(richData(), 'p1');
+  test('五层归属串得起来：功能挂项目与里程碑，Bug 还能再挂到功能上', () => {
+    const d = richData();
+    const 项目 = dev.findProject(d, 'p1');
+    const 里程碑 = dev.findMilestone(d, 'ms1');
+    assert.equal(里程碑.所属项目, 项目.id);
+
+    const 功能 = dev.findFeature(d, 'fj2');
+    assert.equal(功能.所属项目, 项目.id);
+    assert.equal(功能.所属里程碑, 里程碑.id);
+
+    const bug = dev.findBug(d, 'bg1');
+    assert.equal(bug.所属项目, 项目.id);
+    assert.equal(bug.所属里程碑, 里程碑.id);
+    assert.equal(bug.所属功能, 功能.id);
+
+    const 日志 = dev.logsOf(d, 'p1')[0];
+    assert.equal(日志.所属项目, 项目.id);
+  });
+
+  // ---- 第二层：里程碑 ----
+
+  test('里程碑：挂在项目下，可以设目标日期与状态', () => {
+    const d = emptyData();
+    const p = dev.addProject(d, 'X');
+    const m = dev.addMilestone(d, p.id, '  v1.0  ', { 目标日期: '2026-10-01' });
+    assert.equal(m.名称, 'v1.0');
+    assert.equal(m.所属项目, p.id);
+    assert.equal(m.状态, '未开始');
+    assert.equal(m.目标日期, '2026-10-01');
+
+    assert.throws(() => dev.addMilestone(d, '不存在的项目', 'x'), /项目不存在/);
+    assert.throws(() => dev.addMilestone(d, p.id, '  '), /不能为空/);
+
+    dev.updateMilestone(d, m.id, { 状态: '进行中' });
+    assert.equal(dev.findMilestone(d, m.id).状态, '进行中');
+    assert.equal(dev.milestonesOf(d, p.id).length, 1);
+  });
+
+  test('里程碑进度由下面的功能与 Bug 推出来，不用手工同步', () => {
+    const d = richData();
+    // ms1 下面是 fj1(已完成)、fj2(进行中)、bg1(待修)、bg2(已修复)
+    const p = dev.milestoneProgress(d, 'ms1');
+    assert.equal(p.功能数, 2);
+    assert.equal(p.功能完成, 1);
+    assert.equal(p.Bug数, 2);
+    assert.equal(p.Bug关闭, 1);
+    assert.equal(p.完成, 2);
+    assert.equal(p.总, 4);
+    assert.equal(p.百分比, 50);
+
+    // 空里程碑：不能除以零
+    assert.equal(dev.milestoneProgress(d, 'ms2').百分比, 0);
+  });
+
+  test('删里程碑不删下属的功能与 Bug，只把它们从分组里拿出来', () => {
+    const d = richData();
+    assert.equal(dev.removeMilestone(d, 'ms1'), true);
+    assert.equal(
+      d.开发.里程碑.find((m) => m.id === 'ms1'),
+      undefined
+    );
+    assert.equal(d.开发.功能.length, 6, '功能一条都不能少');
+    assert.equal(dev.findFeature(d, 'fj1').所属里程碑, null);
+    assert.equal(dev.findBug(d, 'bg1').所属里程碑, null);
+    // 别的里程碑下面的东西不受影响
+    assert.equal(dev.findFeature(d, 'fk1').所属里程碑, 'ms3');
+    assert.equal(dev.removeMilestone(d, '不存在'), false);
+  });
+
+  // ---- 第三层：功能列表 ----
+
+  test('功能三栏', () => {
+    const byState = dev.featuresByState(richData(), 'p1');
     assert.equal(byState.待办.length, 1);
     assert.equal(byState.进行中.length, 2);
     assert.equal(byState.已完成.length, 1);
   });
 
-  test('推任务状态：完成时记完成日期，退回时清掉', () => {
+  test('推功能状态：完成时记完成日期并归档，退回时都撤掉', () => {
     const d = richData();
-    assert.equal(dev.nextState('待办'), '进行中');
-    assert.equal(dev.nextState('进行中'), '已完成');
-    assert.equal(dev.nextState('已完成'), null);
+    assert.equal(dev.nextFeatureState('待办'), '进行中');
+    assert.equal(dev.nextFeatureState('进行中'), '已完成');
+    assert.equal(dev.nextFeatureState('已完成'), null);
 
-    dev.moveTask(d, 'p1', 'pj4', '进行中', TODAY);
-    assert.equal(dev.findTask(d, 'p1', 'pj4').状态, '进行中');
+    dev.moveFeature(d, 'fj4', '进行中', TODAY);
+    assert.equal(dev.findFeature(d, 'fj4').状态, '进行中');
+    assert.equal(dev.findFeature(d, 'fj4').归档, false);
 
-    dev.moveTask(d, 'p1', 'pj4', '已完成', TODAY);
-    assert.equal(dev.findTask(d, 'p1', 'pj4').完成日期, TODAY);
+    dev.moveFeature(d, 'fj4', '已完成', TODAY);
+    assert.equal(dev.findFeature(d, 'fj4').完成日期, TODAY);
+    assert.equal(dev.findFeature(d, 'fj4').归档, true);
 
-    dev.moveTask(d, 'p1', 'pj4', '待办', TODAY);
-    assert.equal(dev.findTask(d, 'p1', 'pj4').完成日期, null);
+    dev.moveFeature(d, 'fj4', '待办', TODAY);
+    assert.equal(dev.findFeature(d, 'fj4').完成日期, null);
+    assert.equal(dev.findFeature(d, 'fj4').归档, false);
     // 非法状态不生效
-    assert.equal(dev.moveTask(d, 'p1', 'pj4', '随便'), null);
+    assert.equal(dev.moveFeature(d, 'fj4', '随便'), null);
+  });
+
+  // ---- 第四层：Bug 追踪 ----
+
+  test('Bug：默认待修、严重程度默认一般，可以再挂到某条功能上', () => {
+    const d = emptyData();
+    const p = dev.addProject(d, 'X');
+    const f = dev.addFeature(d, p.id, '登录页');
+    const b = dev.addBug(d, p.id, '  点登录没反应  ', { 所属功能: f.id, 严重程度: '严重' });
+    assert.equal(b.标题, '点登录没反应');
+    assert.equal(b.状态, '待修');
+    assert.equal(b.严重程度, '严重');
+    assert.equal(b.所属功能, f.id);
+    assert.equal(b.归档, false);
+    assert.throws(() => dev.addBug(d, p.id, '  '), /不能为空/);
+  });
+
+  test('Bug 改成「已修复 / 不修」都算收尾，退回就撤销归档', () => {
+    const byState = dev.bugsByState(richData(), 'p1');
+    assert.equal(byState.待修.length, 1);
+    assert.equal(byState.修复中.length, 0);
+    assert.equal(byState.已修复.length, 1);
+
+    const d = richData();
+    dev.moveBug(d, 'bg1', '已修复', TODAY);
+    assert.equal(dev.findBug(d, 'bg1').完成日期, TODAY);
+    assert.equal(dev.findBug(d, 'bg1').归档, true);
+
+    dev.moveBug(d, 'bg1', '待修', TODAY);
+    assert.equal(dev.findBug(d, 'bg1').完成日期, null);
+    assert.equal(dev.findBug(d, 'bg1').归档, false);
+
+    dev.moveBug(d, 'bg1', '不修', TODAY);
+    assert.equal(dev.findBug(d, 'bg1').归档, true, '「不修」也是收尾');
+
+    assert.equal(dev.moveBug(d, 'bg1', '随便'), null);
+  });
+
+  test('Bug 按严重程度排序：致命在最前', () => {
+    const d = richData();
+    assert.deepEqual(
+      dev.sortedBugs(d.开发.Bug.filter((b) => b.所属项目 === 'p1')).map((b) => b.严重程度),
+      ['致命', '一般']
+    );
+  });
+
+  // ---- 第五层：开发日志 ----
+
+  test('开发日志按时间倒序，可单条删除', () => {
+    const d = richData();
+    const list = dev.logsOf(d, 'p1');
+    assert.equal(list.length, 2);
+    assert.equal(list[0].id, 'lg1', '10:00 那条应该排在昨天 16:00 前面');
+    assert.equal(dev.removeLog(d, 'lg1'), true);
+    assert.equal(dev.logsOf(d, 'p1').length, 1);
+    assert.equal(dev.removeLog(d, '不存在'), false);
   });
 
   test('计时：同一时间只允许一个项目在计时，切项目会自动停掉上一个', () => {
@@ -254,19 +407,27 @@ describe('开发工作逻辑（logic/dev.js）', () => {
     assert.equal(dev.notesOf(d, id).length, 1);
   });
 
-  test('任务加进今日计划：标题带项目名，归属 dev', () => {
+  test('功能加进今日计划：标题带项目名，归属 dev', () => {
     const d = richData();
-    const r = dev.taskToToday(d, 'p1', 'pj2', TODAY);
+    const r = dev.featureToToday(d, 'fj2', TODAY);
     assert.equal(r.ok, true);
     assert.equal(r.task.归属, 'dev');
     assert.match(r.task.标题, /工作台：做首页/);
-    const r2 = dev.taskToToday(d, 'p1', '不存在', TODAY);
-    assert.equal(r2.ok, false);
+    assert.equal(dev.featureToToday(d, '不存在', TODAY).ok, false);
+  });
+
+  test('Bug 加进今日计划：标题前面标一个「修」', () => {
+    const d = richData();
+    const r = dev.bugToToday(d, 'bg1', TODAY);
+    assert.equal(r.ok, true);
+    assert.equal(r.task.归属, 'dev');
+    assert.match(r.task.标题, /工作台：修 首页数字偶尔算错/);
+    assert.equal(dev.bugToToday(d, '不存在', TODAY).ok, false);
   });
 
   test('项目列表排序：进行中在前，已完成在后', () => {
     const d = richData();
-    d.开发.项目.push({ id: 'p9', 名称: '收尾', 状态: '已完成', 仓库路径或链接: '', 备注: '', 任务列表: [] });
+    d.开发.项目.push({ id: 'p9', 名称: '收尾', 状态: '已完成', 仓库路径或链接: '', 备注: '' });
     assert.deepEqual(
       dev.sortedProjects(d).map((p) => p.名称),
       ['工作台', '接单：小工具', '收尾']

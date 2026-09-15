@@ -6,6 +6,7 @@ import devView, { resetViewState as resetDev } from '../public/js/views/dev.js';
 import consultView, { resetViewState as resetConsult } from '../public/js/views/consult.js';
 import { tasksOf } from '../public/js/logic/tasks.js';
 import { runningProjectId } from '../public/js/logic/dev.js';
+import * as dev from '../public/js/logic/dev.js';
 
 function ctxOf(data, key, today = TODAY) {
   return {
@@ -235,21 +236,34 @@ describe('开发工作页面（views/dev.js）', () => {
     assert.match(html, /新建项目/);
   });
 
-  test('有项目时：左列表 + 右详情 + 计时 + 三栏任务 + 笔记', () => {
+  test('有项目时：左列表 + 右详情 + 计时 + 里程碑 + 功能三栏 + Bug + 日志 + 笔记', () => {
     resetDev();
     const html = devView.render(ctxOf(richData(), 'dev'));
     assert.match(html, /data-action="dev:选项目" data-id="p1"/);
     assert.match(html, /data-action="dev:开始计时" data-id="p1"/);
-    assert.match(html, /data-action="dev:加任务"/);
-    assert.equal((html.match(/data-task-state="/g) || []).length, 3);
+    // 第二层
+    assert.match(html, /data-action="dev:加里程碑" data-id="p1"/);
+    assert.match(html, /v1\.0 可用/);
+    // 第三层
+    assert.match(html, /data-action="dev:加功能"/);
+    assert.equal((html.match(/data-feature-state="/g) || []).length, 3);
+    // 第四层
+    assert.match(html, /data-action="dev:加Bug" data-id="p1"/);
+    assert.match(html, /首页数字偶尔算错/);
+    // 第五层
+    assert.match(html, /开发日志/);
+    assert.match(html, /完成功能「打通数据读写」/);
     assert.match(html, /data-action="dev:加笔记"/);
     assert.match(html, /今日 50 分 · 累计 1 小时 50 分/);
   });
 
-  test('删项目前会把影响说清楚', () => {
+  test('删项目前会把影响说清楚（五个层级都要报数）', () => {
     resetDev();
     const html = devView.render(ctxOf(richData(), 'dev'));
-    assert.match(html, /会一并删掉它的 4 条任务、1 条笔记、2 条计时记录/);
+    assert.match(
+      html,
+      /会一并删掉它的 2 个里程碑、4 条功能、2 个 Bug、2 条日志、1 条笔记、2 条计时/
+    );
   });
 
   test('开始计时：真的开了一条计时记录，重复点不会多开', () => {
@@ -279,27 +293,36 @@ describe('开发工作页面（views/dev.js）', () => {
     assert.equal(d.开发.计时.filter((w) => w.开始时间 && !w.结束时间).length, 1);
   });
 
-  test('推进任务按钮把任务挪到下一栏，退回按钮挪回待办', () => {
+  test('功能推进按钮挪到下一栏，退回按钮挪回待办', () => {
     resetDev();
     const d = richData();
     const ctx = ctxOf(d, 'dev');
-    act(devView, 'dev:推进任务', ctx, { id: 'pj4' });
-    assert.equal(d.开发.项目.find((p) => p.id === 'p1').任务列表.find((t) => t.id === 'pj4').状态, '进行中');
+    act(devView, 'dev:功能推进', ctx, { id: 'fj4' });
+    assert.equal(dev.findFeature(d, 'fj4').状态, '进行中');
 
-    act(devView, 'dev:推进任务', ctx, { id: 'pj4' });
-    assert.equal(d.开发.项目.find((p) => p.id === 'p1').任务列表.find((t) => t.id === 'pj4').状态, '已完成');
-    assert.equal(d.开发.项目.find((p) => p.id === 'p1').任务列表.find((t) => t.id === 'pj4').完成日期, TODAY);
+    act(devView, 'dev:功能推进', ctx, { id: 'fj4' });
+    assert.equal(dev.findFeature(d, 'fj4').状态, '已完成');
+    assert.equal(dev.findFeature(d, 'fj4').完成日期, TODAY);
 
-    act(devView, 'dev:退回任务', ctx, { id: 'pj4' });
-    assert.equal(d.开发.项目.find((p) => p.id === 'p1').任务列表.find((t) => t.id === 'pj4').状态, '待办');
+    act(devView, 'dev:功能退回', ctx, { id: 'fj4' });
+    assert.equal(dev.findFeature(d, 'fj4').状态, '待办');
   });
 
-  test('任务加进今日计划：标题带项目名', () => {
+  test('功能加进今日计划：标题带项目名', () => {
     resetDev();
     const d = richData();
     const ctx = ctxOf(d, 'dev');
-    act(devView, 'dev:任务入计划', ctx, { id: 'pj2' });
+    act(devView, 'dev:功能入计划', ctx, { id: 'fj2' });
     assert.match(tasksOf(d, TODAY).at(-1).标题, /工作台：做首页/);
+    assert.equal(tasksOf(d, TODAY).at(-1).归属, 'dev');
+  });
+
+  test('Bug 加进今日计划：标题带项目名和「修」', () => {
+    resetDev();
+    const d = richData();
+    const ctx = ctxOf(d, 'dev');
+    act(devView, 'dev:Bug入计划', ctx, { id: 'bg1' });
+    assert.match(tasksOf(d, TODAY).at(-1).标题, /工作台：修 首页数字偶尔算错/);
     assert.equal(tasksOf(d, TODAY).at(-1).归属, 'dev');
   });
 
@@ -312,7 +335,7 @@ describe('开发工作页面（views/dev.js）', () => {
     assert.match(html, /data-action="dev:开始计时" data-id="p2"/);
   });
 
-  test('新建项目、加任务、加笔记、删项目', () => {
+  test('新建项目、加里程碑、加功能、加Bug、加笔记、删项目', () => {
     resetDev();
     const d = richData();
     const ctx = ctxOf(d, 'dev');
@@ -320,8 +343,20 @@ describe('开发工作页面（views/dev.js）', () => {
     assert.equal(d.开发.项目.at(-1).名称, '新项目');
 
     act(devView, 'dev:选项目', ctx, { id: 'p1' });
-    act(devView, 'dev:加任务', ctx, { id: 'p1', value: '新任务' });
-    assert.equal(d.开发.项目.find((p) => p.id === 'p1').任务列表.at(-1).标题, '新任务');
+
+    act(devView, 'dev:加里程碑', ctx, { id: 'p1', value: 'v2.0' });
+    assert.equal(d.开发.里程碑.at(-1).名称, 'v2.0');
+    assert.equal(d.开发.里程碑.at(-1).所属项目, 'p1');
+
+    act(devView, 'dev:加功能', ctx, { id: 'p1', value: '新功能' });
+    assert.equal(d.开发.功能.at(-1).标题, '新功能');
+    assert.equal(d.开发.功能.at(-1).所属项目, 'p1');
+
+    // 先选严重程度，再加 Bug
+    devView.actions['dev:选新Bug严重程度'](el({ value: '致命' }), ctx);
+    act(devView, 'dev:加Bug', ctx, { id: 'p1', value: '新 Bug' });
+    assert.equal(d.开发.Bug.at(-1).标题, '新 Bug');
+    assert.equal(d.开发.Bug.at(-1).严重程度, '致命');
 
     act(devView, 'dev:加笔记', ctx, { id: 'p1', value: '记一句' });
     assert.equal(d.开发.笔记.at(-1).正文, '记一句');

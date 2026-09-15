@@ -6,6 +6,7 @@
  */
 
 import { newId, addTask } from './tasks.js';
+import { addFeature } from './dev.js';
 import { addMemo } from './memo.js';
 import * as ui from '../ui.js';
 import { todayKey } from '../dates.js';
@@ -14,7 +15,7 @@ export const QUICK_TARGETS = [
   { key: 'memo', label: '快速备忘', 需要: null },
   { key: 'today', label: '今日任务', 需要: null, 有归属: true },
   { key: 'media', label: '自媒体选题', 需要: null },
-  { key: 'dev', label: '开发任务', 需要: '项目' },
+  { key: 'dev', label: '开发功能', 需要: '项目' },
   { key: 'consult', label: '咨询待跟进', 需要: '客户' },
   { key: 'games', label: '游戏待玩', 需要: null },
 ];
@@ -75,15 +76,8 @@ export function submitQuick(data, form = {}) {
   if (target.key === 'dev') {
     const 项目 = (data.开发.项目 || []).find((p) => p.id === form.项目);
     if (!项目) return { ok: false, error: '先选一个项目' };
-    if (!Array.isArray(项目.任务列表)) 项目.任务列表 = [];
-    项目.任务列表.push({
-      id: newId('pj'),
-      标题: text,
-      状态: '待办',
-      创建日期: today,
-      完成日期: null,
-    });
-    return { ok: true, 去处: `开发工作 · ${项目.名称}`, 标签: 'dev' };
+    addFeature(data, 项目.id, text, {}, today);
+    return { ok: true, 去处: `开发工作 · ${项目.名称} 的功能列表`, 标签: 'dev' };
   }
 
   if (target.key === 'consult') {

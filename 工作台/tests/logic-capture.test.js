@@ -117,19 +117,26 @@ describe('Cmd+K 快速记一笔（logic/quickcapture.js）', () => {
     assert.equal(d.自媒体.选题[0].创建日期, TODAY);
   });
 
-  test('存成开发任务：没选项目要拦住，选了就进那个项目的任务列表', () => {
+  test('存成开发功能：没选项目要拦住，选了就进那个项目的【功能列表】', () => {
     const d = richData();
     const bad = submitQuick(d, { target: 'dev', text: '修个 bug', 项目: '', today: TODAY });
     assert.equal(bad.ok, false);
     assert.equal(bad.error, '先选一个项目');
 
+    const 之前 = d.开发.功能.length;
     const good = submitQuick(d, { target: 'dev', text: '修个 bug', 项目: 'p1', today: TODAY });
     assert.equal(good.ok, true);
-    assert.equal(good.去处, '开发工作 · 工作台');
-    const p1 = d.开发.项目.find((p) => p.id === 'p1');
-    assert.equal(p1.任务列表.length, 5);
-    assert.equal(p1.任务列表[4].标题, '修个 bug');
-    assert.equal(p1.任务列表[4].状态, '待办');
+    assert.equal(good.去处, '开发工作 · 工作台 的功能列表');
+    assert.equal(d.开发.功能.length, 之前 + 1);
+
+    const 新的 = d.开发.功能.at(-1);
+    assert.equal(新的.标题, '修个 bug');
+    assert.equal(新的.状态, '待办');
+    assert.equal(新的.所属项目, 'p1');
+    assert.equal(新的.所属里程碑, null);
+    assert.equal(新的.归档, false);
+    // 旧的「项目里挂任务列表」写法不该再出现
+    assert.equal('任务列表' in d.开发.项目.find((p) => p.id === 'p1'), false);
   });
 
   test('存成咨询待跟进：没选客户要拦住，选了记在客户名下并带到期日', () => {
