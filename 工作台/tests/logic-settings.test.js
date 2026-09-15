@@ -119,7 +119,11 @@ describe('设置逻辑（logic/settings.js）', () => {
     assert.equal(S.clearSectionImpact(d, '开发'), 2 + 3 + 6 + 3 + 2 + 1 + 3, '项目 2 + 里程碑 3 + 功能 6 + Bug 3 + 日志 2 + 笔记 1 + 计时 3');
     assert.equal(S.clearSectionImpact(d, '咨询'), 2 + 3 + 4 + 1 + 2);
     assert.equal(S.clearSectionImpact(d, '健身'), 2 + 3, '打卡 2 + 排了 3 天');
-    assert.equal(S.clearSectionImpact(d, '饮食'), 3 + 1 + 1 + 2, '食物库 3 + 记录 1 天 + 饮水 1 天 + 体重 2');
+    assert.equal(
+      S.clearSectionImpact(d, '饮食'),
+      3 + 1 + 1 + 1 + 2,
+      '食物库 3 + 记录 1 天 + 计划 1 天 + 饮水 1 天 + 体重 2'
+    );
     assert.equal(S.clearSectionImpact(d, '游戏'), 2 + 2 + 3);
   });
 

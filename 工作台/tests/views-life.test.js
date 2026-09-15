@@ -241,7 +241,7 @@ describe('饮食页面（views/diet.js）', () => {
     const ctx = ctxOf(d, 'diet');
     const html = dietView.render(ctx);
     assert.equal((html.match(/class="water-cell/g) || []).length, 8);
-    assert.equal((html.match(/is-on/g) || []).length, 3, '今天喝了 3 杯');
+    assert.equal((html.match(/class="water-cell is-on"/g) || []).length, 3, '今天喝了 3 杯');
 
     act(dietView, 'diet:点水格', ctx, { dataset: { index: '0' } });
     assert.equal(d.饮食.饮水[TODAY], 0, '再点第一杯就等于取消');

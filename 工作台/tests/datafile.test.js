@@ -30,7 +30,7 @@ describe('数据文件层（server/datafile.js）', () => {
     assert.deepEqual(d.开发, { 项目: [], 里程碑: [], 功能: [], Bug: [], 日志: [], 笔记: [], 计时: [] });
     assert.deepEqual(d.咨询, { 客户: [], 沟通: [], 待跟进: [], 交付物: [], 工时: [] });
     assert.deepEqual(d.健身, { 计划模板: {}, 打卡: [] });
-    assert.deepEqual(d.饮食, { 食物库: [], 记录: {}, 饮水: {}, 体重: [] });
+    assert.deepEqual(d.饮食, { 食物库: [], 记录: {}, 计划: {}, 饮水: {}, 体重: [] });
     assert.deepEqual(d.游戏, { 在玩: [], 待玩: [], 时长: [] });
     assert.ok(Array.isArray(d.设置.平台选项));
     assert.ok(d.设置.平台选项.includes('YouTube'));

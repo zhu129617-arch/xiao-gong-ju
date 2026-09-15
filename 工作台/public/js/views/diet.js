@@ -2,14 +2,19 @@ import * as ui from '../ui.js';
 import { formatDisplay, formatShortDate } from '../dates.js';
 import {
   MEALS,
+  TRACKS,
   emptySection,
   matchFoods,
   addFood,
   removeFood,
-  addFromFoodLib,
-  addEntry,
-  removeEntry,
+  addFromFoodLibTrack,
+  entriesOfTrack,
+  removeEntryTrack,
   dayTotals,
+  总量,
+  偏差,
+  营养素比例,
+  照计划记实际,
   waterOf,
   addWater,
   setWater,
@@ -21,11 +26,22 @@ import {
 
 const 饮水格数 = 8;
 
-const ui_state = { 提示: null, 错误: null };
+const ui_state = {
+  提示: null,
+  错误: null,
+  // 现在在看哪条轨道：计划（日程安排）还是实际（真实记录）
+  轨道: '实际',
+};
 
 export function resetViewState() {
   ui_state.提示 = null;
   ui_state.错误 = null;
+  ui_state.轨道 = '实际';
+}
+
+/** 当前轨道；认不出的值一律当「实际」 */
+function 轨道() {
+  return ui_state.轨道 === '计划' ? '计划' : '实际';
 }
 
 function 提示线() {
@@ -54,9 +70,74 @@ function 汇总条(ctx, totals) {
   }%;background:${totals.超了 ? 'var(--danger-line)' : 'var(--pink-line)'}"></div></div>`;
 }
 
+/** 三大营养素供能比例的横向条 */
+function 营养素条(比例) {
+  const 段 = [
+    { 名: '蛋白质', 值: 比例.蛋白质, 色: 'var(--blue-line)' },
+    { 名: '碳水', 值: 比例.碳水, 色: 'var(--amber-line)' },
+    { 名: '脂肪', 值: 比例.脂肪, 色: 'var(--pink-line)' },
+  ];
+  if (!比例.有数据) {
+    return '<p class="hint">这一轨还没填营养素，填了就能看到供能比例。</p>';
+  }
+  return `
+  <div class="progress" style="height:12px;overflow:hidden">
+    ${段
+      .map((s) => `<span style="display:inline-block;height:100%;width:${s.值}%;background:${s.色}"></span>`)
+      .join('')}
+  </div>
+  <div class="toolbar" style="margin:6px 0 0">
+    ${段
+      .map(
+        (s) =>
+          `<span class="hint" style="display:inline-flex;align-items:center;gap:5px"><i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${s.色}"></i>${s.名} ${s.值}%</span>`
+      )
+      .join('')}
+  </div>`;
+}
+
+/** 计划 / 实际 两条轨道的对比 */
+function 双轨对比(ctx) {
+  const d = 偏差(ctx.data, ctx.today);
+  const 条 = (名, 计划值, 实际值, 单位 = '') => `
+    <div class="list-row">
+      <span class="grow">${ui.escapeHtml(名)}</span>
+      <span class="hint">计划 ${ui.formatNumber(计划值)}${单位}</span>
+      <span class="hint">实际 ${ui.formatNumber(实际值)}${单位}</span>
+    </div>`;
+
+  return `
+  <div class="card">
+    <div class="card-head">
+      <h2 class="card-title">计划 vs 实际</h2>
+      <span class="spacer"></span>
+      ${
+        d.有计划 && d.有实际
+          ? `<span class="hint${d.照着吃 ? '' : ' is-danger'}">热量${
+              d.热量差 > 0 ? '多吃了' : d.热量差 < 0 ? '少吃了' : '持平'
+            } ${ui.formatNumber(Math.abs(d.热量差))} 千卡</span>`
+          : `<span class="hint">${d.有计划 ? '还没记实际' : '这天还没排计划'}</span>`
+      }
+      <button type="button" class="btn btn-sm" data-action="diet:照计划记实际">照计划填实际</button>
+    </div>
+    <div class="card-body">
+      <div class="list">
+        ${条('热量', d.计划.热量, d.实际.热量, ' 千卡')}
+        ${条('蛋白质', d.计划.蛋白质, d.实际.蛋白质, ' g')}
+        ${条('碳水', d.计划.碳水, d.实际.碳水, ' g')}
+        ${条('脂肪', d.计划.脂肪, d.实际.脂肪, ' g')}
+      </div>
+      <div style="margin-top:12px">
+        ${ui.sectionTitle('实际的供能比例')}
+        ${营养素条(营养素比例(d.实际))}
+      </div>
+      <p class="hint" style="margin-top:8px">两条轨道各存各的，互相不覆盖。「照计划填实际」只补还空着的餐，已经记过的不动。</p>
+    </div>
+  </div>`;
+}
+
 function 一餐(ctx, meal) {
-  const totals = dayTotals(ctx.data, ctx.today);
-  const list = totals.明细[meal] || [];
+  const list = entriesOfTrack(ctx.data, 轨道(), ctx.today, meal);
   const 小计 = list.reduce((s, e) => s + (Number(e.热量) || 0), 0);
   return `
   <div class="meal-block" data-meal="${ui.escapeHtml(meal)}">
@@ -256,25 +337,44 @@ export default {
     }
 
     const totals = dayTotals(ctx.data, ctx.today);
+    const 当前 = 总量(ctx.data, 轨道(), ctx.today);
     return `
     <div class="view">
       ${提示线()}
       ${汇总条(ctx, totals)}
       <div class="card">
         <div class="card-head">
-          <h2 class="card-title">${ui.escapeHtml(formatDisplay(ctx.today))} 吃了什么</h2>
+          <h2 class="card-title">${ui.escapeHtml(formatDisplay(ctx.today))} ${
+      轨道() === '计划' ? '打算吃什么' : '吃了什么'
+    }</h2>
           <span class="spacer"></span>
           ${
-            totals.未记餐数 > 0
-              ? `<span class="hint">还差 ${totals.未记餐数} 餐没记</span>`
-              : '<span class="hint">四餐都记齐了</span>'
+            当前.未记餐数 > 0
+              ? `<span class="hint">还差 ${当前.未记餐数} 餐没记</span>`
+              : '<span class="hint">四餐都齐了</span>'
           }
           <button type="button" class="btn btn-sm" data-action="diet:提醒入计划">加进今日计划</button>
         </div>
         <div class="card-body">
+          <div class="tabs">
+            ${TRACKS.map(
+              (t) =>
+                `<button type="button" class="tab${
+                  轨道() === t ? ' is-on' : ''
+                }" data-action="diet:切轨道" data-id="${t}">${
+                  t === '计划' ? '计划摄入（日程安排）' : '实际记录（真吃了什么）'
+                }</button>`
+            ).join('')}
+          </div>
           ${MEALS.map((m) => 一餐(ctx, m)).join('')}
+          <p class="hint" style="margin-top:10px">${ui.escapeHtml(
+            轨道() === '计划'
+              ? '这里排的是「打算吃什么」，提前一天写好，第二天照着吃。'
+              : '这里记的是「实际吃进去的」。两条轨道互不覆盖，右边的对比看差值。'
+          )}</p>
         </div>
       </div>
+      ${双轨对比(ctx)}
       ${食物库(ctx)}
       ${饮水(ctx)}
       ${体重(ctx)}
@@ -351,7 +451,7 @@ export default {
       const qty = block ? block.querySelector('[data-role="qty"]').value : 1;
       let r = null;
       ctx.store.update((d) => {
-        r = addFromFoodLib(d, ctx.today, meal, foodId, qty);
+        r = addFromFoodLibTrack(d, 轨道(), ctx.today, meal, foodId, qty);
       });
       if (!r || !r.ok) {
         ui_state.错误 = (r && r.error) || '记不上';
@@ -368,7 +468,7 @@ export default {
       let r = null;
       ctx.store.update((d) => {
         if (匹配.length > 0) {
-          r = addFromFoodLib(d, ctx.today, meal, 匹配[0].id, qty);
+          r = addFromFoodLibTrack(d, 轨道(), ctx.today, meal, 匹配[0].id, qty);
         } else {
           r = { ok: false, error: `食物库里没有「${名字}」，先在下面的食物库里加上它，以后就能一键带出热量`, 需要入库: true };
         }
@@ -382,7 +482,20 @@ export default {
     },
     'diet:删条目': (el, ctx, meal) => {
       const index = Number(el.dataset.index);
-      ctx.store.update((d) => removeEntry(d, ctx.today, meal, index));
+      ctx.store.update((d) => removeEntryTrack(d, 轨道(), ctx.today, meal, index));
+    },
+    'diet:切轨道': (el, ctx) => {
+      ui_state.轨道 = el.dataset.id === '计划' ? '计划' : '实际';
+      ctx.rerender();
+    },
+    'diet:照计划记实际': (el, ctx) => {
+      let r = null;
+      ctx.store.update((d) => {
+        r = 照计划记实际(d, ctx.today);
+      });
+      ui_state.提示 = r && r.补了几条 > 0 ? `照着计划补了 ${r.补了几条} 条到实际记录` : '计划里没有可补的，或者实际已经记过了';
+      ui_state.轨道 = '实际';
+      ctx.rerender();
     },
     'diet:点水格': (el, ctx) => {
       const i = Number(el.dataset.index);

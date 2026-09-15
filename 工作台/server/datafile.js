@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-export const CURRENT_VERSION = 3;
+export const CURRENT_VERSION = 4;
 
 /**
  * 数据文件的完整默认结构（对应 PRD §7.2）。
@@ -33,7 +33,7 @@ export function defaultData() {
     },
     咨询: { 客户: [], 沟通: [], 待跟进: [], 交付物: [], 工时: [] },
     健身: { 计划模板: {}, 打卡: [] },
-    饮食: { 食物库: [], 记录: {}, 饮水: {}, 体重: [] },
+    饮食: { 食物库: [], 记录: {}, 计划: {}, 饮水: {}, 体重: [] },
     游戏: { 在玩: [], 待玩: [], 时长: [] },
     元: { 已处理顺延: [] },
   };
@@ -107,7 +107,37 @@ export function 迁移数据(data) {
   迁移开发数据(data.开发);
   迁移自媒体数据(data.自媒体);
   迁移健身数据(data.健身);
+  迁移饮食数据(data.饮食);
   return data;
+}
+
+/**
+ * 饮食从"只有实际记录"升级成双轨制（计划 / 实际），
+ * 并给食物库和已有记录补上 碳水 / 脂肪 两个营养素字段（没填就是 null）。
+ */
+export function 迁移饮食数据(饮食) {
+  if (!饮食 || typeof 饮食 !== 'object') return 饮食;
+  if (!饮食.计划 || typeof 饮食.计划 !== 'object') 饮食.计划 = {};
+
+  const 补营养素 = (项) => {
+    for (const key of ['蛋白质', '碳水', '脂肪']) {
+      if (!(key in 项)) 项[key] = null;
+    }
+  };
+
+  for (const f of Array.isArray(饮食.食物库) ? 饮食.食物库 : []) 补营养素(f);
+  for (const 轨道 of ['记录', '计划']) {
+    const store = 饮食[轨道];
+    if (!store || typeof store !== 'object') continue;
+    for (const day of Object.values(store)) {
+      if (!day || typeof day !== 'object') continue;
+      for (const list of Object.values(day)) {
+        if (!Array.isArray(list)) continue;
+        for (const e of list) 补营养素(e);
+      }
+    }
+  }
+  return 饮食;
 }
 
 const 部位清单 = ['胸', '背', '腿', '核心', '其他'];

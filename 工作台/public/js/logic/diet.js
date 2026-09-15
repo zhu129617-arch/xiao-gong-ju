@@ -1,14 +1,26 @@
-/** 饮食计划的纯逻辑：食物库、四餐记录、饮水、体重 */
+/** 饮食计划的纯逻辑：食物库、双轨制四餐（计划 / 实际）、饮水、体重 */
 
 import { newId, addFromModule } from './tasks.js';
 import { todayKey } from '../dates.js';
 
 export const MEALS = ['早餐', '午餐', '晚餐', '加餐'];
 
+/**
+ * 两条轨道（PRD §5.7）：
+ *   计划 = 日程安排（打算吃什么 / 食谱），提前排
+ *   实际 = 真实记录（实际吃进去的），吃完记
+ * 两者结构完全一样、各存各的，谁也不覆盖谁，最后比较出热量偏差。
+ */
+export const TRACKS = ['计划', '实际'];
+
+/** 三大营养素每克多少千卡，用来算供能比例 */
+const 每克千卡 = { 蛋白质: 4, 碳水: 4, 脂肪: 9 };
+
 export function emptySection(data) {
   return (
     (data.饮食.食物库 || []).length === 0 &&
     Object.keys(data.饮食.记录 || {}).length === 0 &&
+    Object.keys(data.饮食.计划 || {}).length === 0 &&
     (data.饮食.体重 || []).length === 0
   );
 }
@@ -18,9 +30,19 @@ function num(v) {
   return Number.isFinite(n) ? n : 0;
 }
 
+/** 取某条轨道的存储对象；认不出的轨道名一律当「实际」 */
+function ensureTrack(data, 轨) {
+  const key = 轨 === '计划' ? '计划' : '记录';
+  if (!data.饮食[key] || typeof data.饮食[key] !== 'object') data.饮食[key] = {};
+  return data.饮食[key];
+}
+
 function ensureRecords(data) {
-  if (!data.饮食.记录 || typeof data.饮食.记录 !== 'object') data.饮食.记录 = {};
-  return data.饮食.记录;
+  return ensureTrack(data, '实际');
+}
+
+function ensurePlans(data) {
+  return ensureTrack(data, '计划');
 }
 
 function ensureWater(data) {
@@ -30,7 +52,14 @@ function ensureWater(data) {
 
 // ---------- 食物库 ----------
 
-export function addFood(data, { 名称, 单位 = '份', 热量 = 0, 蛋白质 = null } = {}) {
+/** 空值或非数字一律存 null（表示"没填"，不是 0） */
+function 可空的数(v) {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? Math.round(n * 10) / 10 : null;
+}
+
+export function addFood(data, { 名称, 单位 = '份', 热量 = 0, 蛋白质 = null, 碳水 = null, 脂肪 = null } = {}) {
   const 名 = String(名称 || '').trim();
   if (!名) return { ok: false, error: '食物名不能为空' };
   const 热量值 = Number(热量);
@@ -41,7 +70,9 @@ export function addFood(data, { 名称, 单位 = '份', 热量 = 0, 蛋白质 = 
     名称: 名,
     单位: String(单位 || '份').trim() || '份',
     热量: Math.round(热量值),
-    蛋白质: 蛋白质 === null || 蛋白质 === '' || !Number.isFinite(Number(蛋白质)) ? null : Math.round(Number(蛋白质)),
+    蛋白质: 可空的数(蛋白质),
+    碳水: 可空的数(碳水),
+    脂肪: 可空的数(脂肪),
   };
   data.饮食.食物库.push(food);
   return { ok: true, food };
@@ -65,9 +96,8 @@ export function updateFood(data, id, patch = {}) {
     const n = Number(patch.热量);
     if (Number.isFinite(n) && n >= 0) f.热量 = Math.round(n);
   }
-  if ('蛋白质' in patch) {
-    const n = Number(patch.蛋白质);
-    f.蛋白质 = patch.蛋白质 === '' || !Number.isFinite(n) ? null : Math.round(n);
+  for (const key of ['蛋白质', '碳水', '脂肪']) {
+    if (key in patch) f[key] = 可空的数(patch[key]);
   }
   return f;
 }
@@ -87,26 +117,44 @@ export function matchFoods(data, 关键词, limit = 6) {
     .slice(0, limit);
 }
 
-// ---------- 四餐记录 ----------
+// ---------- 四餐：两条轨道共用同一套实现 ----------
 
-export function entriesOf(data, dateKey, meal) {
-  const day = ensureRecords(data)[dateKey];
+/** 取某条轨道某天某一餐的条目 */
+export function entriesOfTrack(data, 轨, dateKey, meal) {
+  const store = ensureTrack(data, 轨);
+  const day = store[dateKey];
   if (!day || !Array.isArray(day[meal])) return [];
   return day[meal];
 }
 
-function ensureMeal(data, dateKey, meal) {
+/** 实际摄入那条轨道（老名字继续可用） */
+export function entriesOf(data, dateKey, meal) {
+  return entriesOfTrack(data, '实际', dateKey, meal);
+}
+
+function ensureMealIn(data, 轨, dateKey, meal) {
   if (!MEALS.includes(meal)) throw new Error('没有这一餐：' + meal);
-  const records = ensureRecords(data);
-  if (!records[dateKey]) records[dateKey] = { 早餐: [], 午餐: [], 晚餐: [], 加餐: [] };
+  const store = ensureTrack(data, 轨);
+  if (!store[dateKey]) store[dateKey] = { 早餐: [], 午餐: [], 晚餐: [], 加餐: [] };
   for (const m of MEALS) {
-    if (!Array.isArray(records[dateKey][m])) records[dateKey][m] = [];
+    if (!Array.isArray(store[dateKey][m])) store[dateKey][m] = [];
   }
-  return records[dateKey][meal];
+  return store[dateKey][meal];
+}
+
+function ensureMeal(data, dateKey, meal) {
+  return ensureMealIn(data, '实际', dateKey, meal);
+}
+
+/** 营养素按份数放大；没填的仍然是 null，不会变成 0 混进统计里 */
+function 缩放(v, 倍数) {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.round(n * 倍数 * 10) / 10 : null;
 }
 
 /** 从食物库加一条：热量按「单位热量 × 数量」算出来 */
-export function addFromFoodLib(data, dateKey, meal, foodId, 数量 = 1) {
+export function addFromFoodLibTrack(data, 轨, dateKey, meal, foodId, 数量 = 1) {
   const food = findFood(data, foodId);
   if (!food) return { ok: false, error: '食物库里没有这一项' };
   const n = Number(数量);
@@ -116,15 +164,27 @@ export function addFromFoodLib(data, dateKey, meal, foodId, 数量 = 1) {
     食物名: food.名称,
     数量: 份数,
     单位: food.单位,
-    热量: Math.round(food.热量 * 份数),
-    蛋白质: food.蛋白质 === null || food.蛋白质 === undefined ? null : Math.round(food.蛋白质 * 份数),
+    热量: Math.round(num(food.热量) * 份数),
+    蛋白质: 缩放(food.蛋白质, 份数),
+    碳水: 缩放(food.碳水, 份数),
+    脂肪: 缩放(food.脂肪, 份数),
   };
-  ensureMeal(data, dateKey, meal).push(entry);
+  ensureMealIn(data, 轨, dateKey, meal).push(entry);
   return { ok: true, entry };
 }
 
+export function addFromFoodLib(data, dateKey, meal, foodId, 数量 = 1) {
+  return addFromFoodLibTrack(data, '实际', dateKey, meal, foodId, 数量);
+}
+
 /** 手动加一条（库里没有的东西也能先记上） */
-export function addEntry(data, dateKey, meal, { 食物名, 数量 = 1, 热量 = 0, 蛋白质 = null } = {}) {
+export function addEntryTrack(
+  data,
+  轨,
+  dateKey,
+  meal,
+  { 食物名, 数量 = 1, 热量 = 0, 蛋白质 = null, 碳水 = null, 脂肪 = null } = {}
+) {
   const 名 = String(食物名 || '').trim();
   if (!名) return { ok: false, error: '写个名字' };
   const 热量值 = Number(热量);
@@ -136,44 +196,167 @@ export function addEntry(data, dateKey, meal, { 食物名, 数量 = 1, 热量 = 
     数量: Number.isFinite(n) && n > 0 ? n : 1,
     单位: '',
     热量: Math.round(热量值),
-    蛋白质: Number.isFinite(Number(蛋白质)) && 蛋白质 !== null && 蛋白质 !== '' ? Math.round(Number(蛋白质)) : null,
+    蛋白质: 可空的数(蛋白质),
+    碳水: 可空的数(碳水),
+    脂肪: 可空的数(脂肪),
   };
-  ensureMeal(data, dateKey, meal).push(entry);
+  ensureMealIn(data, 轨, dateKey, meal).push(entry);
   return { ok: true, entry };
 }
 
-export function removeEntry(data, dateKey, meal, index) {
-  const list = ensureMeal(data, dateKey, meal);
+export function addEntry(data, dateKey, meal, entry = {}) {
+  return addEntryTrack(data, '实际', dateKey, meal, entry);
+}
+
+export function removeEntryTrack(data, 轨, dateKey, meal, index) {
+  const list = ensureMealIn(data, 轨, dateKey, meal);
   if (index < 0 || index >= list.length) return false;
   list.splice(index, 1);
   return true;
 }
 
-/** 某一天的汇总（热量、蛋白、每餐明细、未记餐数） */
-export function dayTotals(data, dateKey) {
-  let 热量 = 0;
-  let 蛋白 = 0;
-  let 未记餐数 = 0;
-  const 明细 = {};
+export function removeEntry(data, dateKey, meal, index) {
+  return removeEntryTrack(data, '实际', dateKey, meal, index);
+}
+
+/**
+ * 照着当天的「计划」把「实际」填上（打算吃的果然吃了，不用重复录一遍）。
+ * 只补那些还空着的餐，已经记过的不动 —— 免得把真实记录冲掉。
+ */
+export function 照计划记实际(data, dateKey) {
+  let 补了几条 = 0;
+  const 补了哪些餐 = [];
   for (const meal of MEALS) {
-    const list = entriesOf(data, dateKey, meal);
+    if (entriesOfTrack(data, '实际', dateKey, meal).length > 0) continue;
+    const 计划条目 = entriesOfTrack(data, '计划', dateKey, meal);
+    if (计划条目.length === 0) continue;
+    for (const e of 计划条目) {
+      const r = addEntryTrack(data, '实际', dateKey, meal, {
+        食物名: e.食物名,
+        数量: e.数量,
+        热量: e.热量,
+        蛋白质: e.蛋白质,
+        碳水: e.碳水,
+        脂肪: e.脂肪,
+      });
+      if (r.ok) 补了几条 += 1;
+    }
+    补了哪些餐.push(meal);
+  }
+  return { ok: true, 补了几条, 补了哪些餐 };
+}
+
+// ---------- 汇总与双轨对比 ----------
+
+/** 汇总某一餐列表 */
+function 合计条目(list) {
+  let 热量 = 0;
+  let 蛋白质 = 0;
+  let 碳水 = 0;
+  let 脂肪 = 0;
+  for (const e of list) {
+    热量 += num(e.热量);
+    蛋白质 += num(e.蛋白质);
+    碳水 += num(e.碳水);
+    脂肪 += num(e.脂肪);
+  }
+  return { 热量, 蛋白质, 碳水, 脂肪, 条数: list.length };
+}
+
+/** 某条轨道某一天的汇总（热量 + 三大营养素 + 每餐明细 + 未记餐数） */
+export function 总量(data, 轨, dateKey) {
+  const 明细 = {};
+  let 热量 = 0;
+  let 蛋白质 = 0;
+  let 碳水 = 0;
+  let 脂肪 = 0;
+  let 未记餐数 = 0;
+
+  for (const meal of MEALS) {
+    const list = entriesOfTrack(data, 轨, dateKey, meal);
     明细[meal] = list;
     if (list.length === 0) 未记餐数 += 1;
-    for (const e of list) {
-      热量 += num(e.热量);
-      蛋白 += num(e.蛋白质);
-    }
+    const 小计 = 合计条目(list);
+    热量 += 小计.热量;
+    蛋白质 += 小计.蛋白质;
+    碳水 += 小计.碳水;
+    脂肪 += 小计.脂肪;
   }
-  const 目标 = num(data.设置.热量目标);
+
   return {
+    轨,
+    日期: dateKey,
     热量,
-    蛋白,
-    目标,
-    剩余: Math.max(0, 目标 - 热量),
-    超了: 热量 > 目标,
-    百分比: 目标 === 0 ? 0 : Math.min(100, Math.round((热量 / 目标) * 100)),
+    蛋白质: Math.round(蛋白质 * 10) / 10,
+    碳水: Math.round(碳水 * 10) / 10,
+    脂肪: Math.round(脂肪 * 10) / 10,
     未记餐数,
     明细,
+  };
+}
+
+/** 三大营养素的供能占比（蛋白 4 / 碳水 4 / 脂肪 9 千卡每克） */
+export function 营养素比例(总) {
+  const 蛋白能 = num(总 && 总.蛋白质) * 每克千卡.蛋白质;
+  const 碳水能 = num(总 && 总.碳水) * 每克千卡.碳水;
+  const 脂肪能 = num(总 && 总.脂肪) * 每克千卡.脂肪;
+  const 合 = 蛋白能 + 碳水能 + 脂肪能;
+  if (合 <= 0) return { 蛋白质: 0, 碳水: 0, 脂肪: 0, 有数据: false };
+
+  const 蛋白占比 = Math.round((蛋白能 / 合) * 100);
+  const 碳水占比 = Math.round((碳水能 / 合) * 100);
+  return {
+    蛋白质: 蛋白占比,
+    碳水: 碳水占比,
+    // 用减法兜住四舍五入，三项加起来一定是 100
+    脂肪: Math.max(0, 100 - 蛋白占比 - 碳水占比),
+    有数据: true,
+  };
+}
+
+/** 某一天的汇总（实际摄入）+ 目标对比，老名字继续可用 */
+export function dayTotals(data, dateKey) {
+  const 实际 = 总量(data, '实际', dateKey);
+  const 目标 = num(data.设置.热量目标);
+  return {
+    ...实际,
+    蛋白: 实际.蛋白质,
+    目标,
+    剩余: Math.max(0, 目标 - 实际.热量),
+    超了: 实际.热量 > 目标,
+    百分比: 目标 === 0 ? 0 : Math.min(100, Math.round((实际.热量 / 目标) * 100)),
+    比例: 营养素比例(实际),
+  };
+}
+
+/** 计划摄入的汇总 */
+export function 计划总量(data, dateKey) {
+  return 总量(data, '计划', dateKey);
+}
+
+/**
+ * 双轨对比：实际 − 计划。
+ * 计划没排的日子返回 计划热量 0、有无计划 false，调用方据此提示"这天还没排"。
+ */
+export function 偏差(data, dateKey) {
+  const 计划 = 总量(data, '计划', dateKey);
+  const 实际 = 总量(data, '实际', dateKey);
+  const 有计划 = MEALS.some((m) => 计划.明细[m].length > 0);
+  const 有实际 = MEALS.some((m) => 实际.明细[m].length > 0);
+
+  return {
+    日期: dateKey,
+    计划,
+    实际,
+    有计划,
+    有实际,
+    热量差: Math.round((实际.热量 - 计划.热量) * 10) / 10,
+    蛋白质差: Math.round((实际.蛋白质 - 计划.蛋白质) * 10) / 10,
+    碳水差: Math.round((实际.碳水 - 计划.碳水) * 10) / 10,
+    脂肪差: Math.round((实际.脂肪 - 计划.脂肪) * 10) / 10,
+    // 实际是不是照着计划吃的：有计划也有实际，且热量差在 ±10% 内
+    照着吃:
+      有计划 && 有实际 && 计划.热量 > 0 && Math.abs(实际.热量 - 计划.热量) / 计划.热量 <= 0.1,
   };
 }
 

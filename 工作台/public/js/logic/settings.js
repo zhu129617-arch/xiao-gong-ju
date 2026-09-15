@@ -16,7 +16,7 @@ export const CLEAR_TARGETS = [
   { key: '开发', 名称: '开发工作（项目、里程碑、功能、Bug、日志、笔记、计时）' },
   { key: '咨询', 名称: '咨询工作（客户、沟通、待跟进、交付物、工时）' },
   { key: '健身', 名称: '健身（计划模板、打卡记录）' },
-  { key: '饮食', 名称: '饮食（食物库、四餐记录、饮水、体重）' },
+  { key: '饮食', 名称: '饮食（食物库、四餐记录、计划摄入、饮水、体重）' },
   { key: '游戏', 名称: '游戏娱乐（在玩、待玩、时长）' },
 ];
 
@@ -101,7 +101,11 @@ const 计数规则 = {
   咨询: (v) => v.客户.length + v.沟通.length + v.待跟进.length + v.交付物.length + v.工时.length,
   健身: (v) => v.打卡.length + Object.keys(v.计划模板 || {}).length,
   饮食: (v) =>
-    v.食物库.length + Object.keys(v.记录 || {}).length + Object.keys(v.饮水 || {}).length + v.体重.length,
+    v.食物库.length +
+    Object.keys(v.记录 || {}).length +
+    Object.keys(v.计划 || {}).length +
+    Object.keys(v.饮水 || {}).length +
+    v.体重.length,
   游戏: (v) => v.在玩.length + v.待玩.length + v.时长.length,
 };
 
