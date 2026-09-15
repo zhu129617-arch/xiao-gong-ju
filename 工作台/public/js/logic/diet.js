@@ -1,7 +1,7 @@
 /** 饮食计划的纯逻辑：食物库、双轨制四餐（计划 / 实际）、饮水、体重 */
 
 import { newId, addFromModule } from './tasks.js';
-import { todayKey } from '../dates.js';
+import { todayKey, shiftKey, monthGrid } from '../dates.js';
 
 export const MEALS = ['早餐', '午餐', '晚餐', '加餐'];
 
@@ -408,4 +408,81 @@ export function remindToToday(data, today = todayKey()) {
   const 标题 = totals.未记餐数 > 0 ? `还差 ${totals.未记餐数} 餐没记` : '今天的饮食记齐了';
   const r = addFromModule(data, today, { 标题, 归属: 'diet' });
   return { ok: true, task: r.task, 已存在: r.已存在, 标题 };
+}
+
+// ---------- 三级视图（日 / 周 / 月）----------
+
+/**
+ * 一天的概况：吃没吃够、记了几餐。
+ * 判定用实际热量和目标比：超 10% 以上算「超了」，低于 80% 算「偏少」。
+ */
+export function 每日概况(data, dateKey) {
+  const 实际 = 总量(data, '实际', dateKey);
+  const 计划 = 总量(data, '计划', dateKey);
+  const 目标 = num(data.设置.热量目标);
+  const 记了餐 = MEALS.filter((m) => 实际.明细[m].length > 0).length;
+
+  let 状态 = '没记';
+  if (记了餐 > 0) {
+    if (目标 <= 0) 状态 = '有记录';
+    else if (实际.热量 > 目标 * 1.1) 状态 = '超了';
+    else if (实际.热量 < 目标 * 0.8) 状态 = '偏少';
+    else 状态 = '达标';
+  }
+
+  return {
+    日期: dateKey,
+    热量: 实际.热量,
+    计划热量: 计划.热量,
+    记了餐,
+    完成度: Math.round((记了餐 / MEALS.length) * 100),
+    状态,
+    达标: 状态 === '达标',
+  };
+}
+
+/** 一周七天（从起日算连续七天） */
+export function 周概况(data, 起日) {
+  const 日 = [];
+  for (let i = 0; i < 7; i += 1) 日.push(每日概况(data, shiftKey(起日, i)));
+  const 有记录 = 日.filter((d) => d.记了餐 > 0);
+  const 合计热量 = 日.reduce((s, d) => s + d.热量, 0);
+  return {
+    起: 起日,
+    止: shiftKey(起日, 6),
+    日,
+    有记录天数: 有记录.length,
+    达标天数: 日.filter((d) => d.达标).length,
+    合计热量,
+    平均热量: 有记录.length ? Math.round(合计热量 / 有记录.length) : 0,
+  };
+}
+
+/** 月历上的每一天（含相邻月份补位的那些格子，inMonth 标出是不是本月） */
+export function 月概况(data, 月) {
+  return monthGrid(月).map((格) => ({ ...格, ...每日概况(data, 格.key) }));
+}
+
+/** 一周的「核心三餐摘要」：每餐记了几天、最常出现的是什么 */
+export function 三餐摘要(data, 起日) {
+  return MEALS.map((meal) => {
+    let 记了几天 = 0;
+    const 计数 = new Map();
+    for (let i = 0; i < 7; i += 1) {
+      const list = entriesOfTrack(data, '实际', shiftKey(起日, i), meal);
+      if (list.length > 0) 记了几天 += 1;
+      for (const e of list) {
+        const 名 = String(e.食物名 || '').trim();
+        if (名) 计数.set(名, (计数.get(名) || 0) + 1);
+      }
+    }
+    return {
+      餐: meal,
+      记了几天,
+      常见: [...计数.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([名, 次]) => ({ 名, 次 })),
+    };
+  });
 }

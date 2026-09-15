@@ -822,6 +822,51 @@
   margin: 3px 2px 0 0;
 }
 
+/* 饮食月视图：格子底色表示热量达标情况，里面一排小圆点表示记了几餐 */
+.calendar-cell {
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.calendar-cell:disabled {
+  cursor: default;
+}
+
+.calendar-cell.is-ok {
+  background: var(--teal-bg);
+  border-color: var(--teal-line);
+}
+
+.calendar-cell.is-over {
+  background: var(--danger-bg);
+  border-color: var(--danger-line);
+}
+
+.calendar-cell.is-low {
+  background: var(--amber-bg);
+  border-color: var(--amber-line);
+}
+
+.cal-dots {
+  display: block;
+  margin-top: 3px;
+  line-height: 0;
+}
+
+.cal-dot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--line-2);
+  margin: 0 2px 0 0;
+}
+
+.cal-dot.is-on {
+  background: var(--accent);
+}
+
 /* ---------- 弹层（快速记一笔） ---------- */
 
 .overlay {
